@@ -48,11 +48,11 @@ const vsSource =
 `# version 300 es
 in vec2 vPos;
 in vec3 vCol;
-
+uniform mat2 mRot;
 out vec4 color;
 
 void main(void) {
-    gl_Position = vec4(vPos, 1.0, 1.0);
+    gl_Position = vec4(mRot * vPos, 1.0, 1.0);
     color = vec4(vCol, 1.0);
 }
 `;
@@ -125,10 +125,21 @@ function initStuff() {
 }
 
 function drawScene() {
+    var mRot = gl.getUniformLocation(program, 'mRot');
+
     var loop = function(){
+        let angle = performance.now() / 3000 * 2 * Math.PI;
+
+        //mat2.copy([Math.cos(angle), -Math.sin(angle), Math.sin(angle), Math.cos(angle)])
+        
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        
+        gl.uniformMatrix2fv(mRot, gl.FALSE, [1, 0, 0, 1]);
         gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+        
+        gl.uniformMatrix2fv(mRot, gl.FALSE, [Math.cos(angle), -Math.sin(angle), Math.sin(angle), Math.cos(angle)]);
         gl.drawArrays(gl.TRIANGLE_STRIP, 4, 3);
+        
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
