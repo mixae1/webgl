@@ -76,9 +76,9 @@ const lab1 = [
     0.5, 0.5, 0.4, 1.0, 0.8,
     -0.5, 0.5, 0.4, 1.0, 0.8,
 
-    Math.cos(2 * Math.PI * 1/3) * 0.4, Math.sin(2 * Math.PI * 1/3) * 0.4, 0.2, 0.2, 0.5,
-    Math.cos(2 * Math.PI * 2/3) * 0.4, Math.sin(2 * Math.PI * 2/3) * 0.4, 0.2, 0.2, 0.5,
-    Math.cos(2 * Math.PI * 3/3) * 0.4, Math.sin(2 * Math.PI * 3/3) * 0.4, 0.2, 0.2, 0.5,
+    Math.cos(2 * Math.PI * 1/3) * 0.4, Math.sin(2 * Math.PI * 1/3) * 0.4, 1, 0, 0,
+    Math.cos(2 * Math.PI * 2/3) * 0.4, Math.sin(2 * Math.PI * 2/3) * 0.4, 0, 1, 0,
+    Math.cos(2 * Math.PI * 3/3) * 0.4, Math.sin(2 * Math.PI * 3/3) * 0.4, 0, 0, 1,
 ]
 
 function initShaderProgram(gl, vsSource, fsSource) {
