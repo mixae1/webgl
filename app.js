@@ -49,26 +49,35 @@ const vsSource =
 in vec3 vPos;
 in vec3 vCol;
 in vec3 vNorm;
+
 uniform float time;
 uniform mat4 mProj;
 uniform mat4 mView;
 uniform mat4 mWorld;
-out vec4 color;
+
+out vec3 v_color;
+out vec3 v_normal;
+
 void main(void) {
     gl_Position = mProj * mView * mWorld * vec4(vPos, 1.0);
-    color = vec4(vCol, dot(mWorld * vec4(vNorm, 1.0), vec4(-0.3, 0.1, 0.8, 1.0)));
+    v_color = vCol;
+    v_normal = mat3(mWorld) * vNorm;
 }
 `;
 
 const fsSource = 
 `# version 300 es
-#ifdef GL_ES
 precision highp float;
-#endif
-in vec4 color;
+
+in vec3 v_color;
+in vec3 v_normal;
 out vec4 fragColor;
+
 void main(void) {
-    fragColor = color;
+    vec3 normal = normalize(v_normal);
+    vec3 lDir = normalize(vec3(1.0, 0.4, -1.0));
+    float lKoef = dot(lDir, normal) * .5 + .5;
+    fragColor = vec4(v_color.rgb * lKoef, 1.0);
 }
 `;
 
@@ -142,8 +151,8 @@ var normals = [
     0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
     -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
     1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
-    0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0,
     0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0,
     0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0,
 ];
 
@@ -232,7 +241,7 @@ function drawScene() {
         angle = performance.now() / 3000 * 2 * Math.PI;
         gl.uniform1f(time, performance.now() / 500);
         mat4.rotate(yRotationMatrix, identityMatrix, angle, [0, 1, 0]);
-        mat4.rotate(xRotationMatrix, identityMatrix, angle / 4, [1, 0, 0]);
+        mat4.rotate(xRotationMatrix, identityMatrix, angle / 10, [1, 0, 0]);
         mat4.mul(worldMatrix, yRotationMatrix, xRotationMatrix);
         gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix);
         
