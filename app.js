@@ -38,8 +38,8 @@ var program;
 var main = function(){
     program = initShaderProgram(gl, vsSource, fsSource);
 
+    initStuff();
     gl.useProgram(program);
-    initStuff(); //  initAttr(); initBuffers();
 
     drawScene();
 }
@@ -48,27 +48,36 @@ const vsSource =
 `# version 300 es
 in vec3 vPos;
 in vec3 vCol;
+in vec3 vNorm;
+
 uniform float time;
 uniform mat4 mProj;
 uniform mat4 mView;
 uniform mat4 mWorld;
-out vec4 color;
+
+out vec3 v_color;
+out vec3 v_normal;
+
 void main(void) {
     gl_Position = mProj * mView * mWorld * vec4(vPos, 1.0);
-    //color = vec4(cos(time)*0.5 + vPos[0]*0.25 + 0.5, sin(time)*0.5 + vPos[1]*0.25 + 0.5, sin(time)*0.25 + cos(time)*0.25 + + vPos[2]*0.25 + 0.5, 1.0);
-    color = vec4(vCol, 1.0);
+    v_color = vCol;
+    v_normal = mat3(mWorld) * vNorm;
 }
 `;
 
 const fsSource = 
 `# version 300 es
-#ifdef GL_ES
 precision highp float;
-#endif
-in vec4 color;
+
+in vec3 v_color;
+in vec3 v_normal;
 out vec4 fragColor;
+
 void main(void) {
-    fragColor = color;
+    vec3 normal = normalize(v_normal);
+    vec3 lDir = normalize(vec3(1.0, 0.4, -1.0));
+    float lKoef = dot(lDir, normal) * .5 + .5;
+    fragColor = vec4(v_color.rgb * lKoef, 1.0);
 }
 `;
 
@@ -138,6 +147,15 @@ var cube_idx =
     22, 20, 23
 ];
 
+var normals = [
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0,
+    0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0,
+];
+
 function initShaderProgram(gl, vsSource, fsSource) {
     const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
     const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
@@ -169,20 +187,30 @@ function loadShader(gl, type, source) {
 function initStuff() {
     vPos = gl.getAttribLocation(program, "vPos");
     vCol = gl.getAttribLocation(program, "vCol");
+    vNorm = gl.getAttribLocation(program, "vNorm");
 
     var buf1 = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cube_vert), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 6 * 4, 0);
+    gl.vertexAttribPointer(vCol, 3, gl.FLOAT, false, 6 * 4, 3 * 4);
+    
+    var buf3 = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf3);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(vNorm, 3, gl.FLOAT, false, 3 * 4, 0);
 
     var buf2 = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf2);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cube_idx), gl.STATIC_DRAW);
+    
 
-    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 6 * 4, 0);
-    gl.vertexAttribPointer(vCol, 3, gl.FLOAT, false, 6 * 4, 3 * 4);
     
     gl.enableVertexAttribArray(vPos);
     gl.enableVertexAttribArray(vCol);
+    gl.enableVertexAttribArray(vNorm);
+
+    
 }
 
 function drawScene() {
@@ -213,7 +241,7 @@ function drawScene() {
         angle = performance.now() / 3000 * 2 * Math.PI;
         gl.uniform1f(time, performance.now() / 500);
         mat4.rotate(yRotationMatrix, identityMatrix, angle, [0, 1, 0]);
-        mat4.rotate(xRotationMatrix, identityMatrix, angle / 4, [1, 0, 0]);
+        mat4.rotate(xRotationMatrix, identityMatrix, angle / 10, [1, 0, 0]);
         mat4.mul(worldMatrix, yRotationMatrix, xRotationMatrix);
         gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix);
         
