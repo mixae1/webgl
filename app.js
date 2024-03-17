@@ -34,51 +34,136 @@ function initWebGL(canvas) {
 
     return gl;
 }
-var program;
+var program = [];
 var main = function(){
-    program = initShaderProgram(gl, vsSource, fsSource);
+    program.push(initShaderProgram(gl, vs1, fs1));
+    program.push(initShaderProgram(gl, vs2, fs1));
+    program.push(initShaderProgram(gl, vs3, fs3));
 
-    gl.useProgram(program);
-    initStuff(); //  initAttr(); initBuffers();
+    initStuff();
 
     drawScene();
 }
 
-const vsSource = 
+const vs1 = 
 `# version 300 es
+
 in vec2 vPos;
-in vec3 vCol;
-uniform mat2 mRot;
+uniform vec3 col;
 out vec4 color;
 
 void main(void) {
-    gl_Position = vec4(mRot * vPos, 1.0, 1.0);
-    color = vec4(vCol, 1.0);
+    gl_Position = vec4(vPos, 0.0, 2.0);
+    color = vec4(col, 1.0);
 }
 `;
 
-const fsSource = 
+const fs1 = 
 `# version 300 es
 #ifdef GL_ES
 precision highp float;
 #endif
+
 in vec4 color;
+
 out vec4 fragColor;
+
 void main(void) {
     fragColor = color;
 }
 `;
 
+const vs2 = 
+`# version 300 es
 
-const lab1 = [
-    -0.5, -0.5, 0.4, 1.0, 0.8,
-    0.5, -0.5, 0.4, 1.0, 0.8,
-    0.5, 0.5, 0.4, 1.0, 0.8,
-    -0.5, 0.5, 0.4, 1.0, 0.8,
+uniform mat4 mProj;
+uniform mat4 mView;
+uniform mat4 mWorld;
 
-    Math.cos(2 * Math.PI * 1/3) * 0.4, Math.sin(2 * Math.PI * 1/3) * 0.4, 1, 0, 0,
-    Math.cos(2 * Math.PI * 2/3) * 0.4, Math.sin(2 * Math.PI * 2/3) * 0.4, 0, 1, 0,
-    Math.cos(2 * Math.PI * 3/3) * 0.4, Math.sin(2 * Math.PI * 3/3) * 0.4, 0, 0, 1,
+uniform vec3 col;
+in vec3 vPos;
+
+out vec4 color;
+
+void main(void) {
+    gl_Position = mProj * mView * mWorld * vec4(vPos, 2.0);
+    color = vec4(col, 1.0);
+}
+`;
+
+
+const vs3 = 
+`# version 300 es
+
+in vec2 vPos;
+
+out float x;
+
+void main(void) {
+    gl_Position = vec4(vPos, 0.0, 3.0);
+    x = vPos.x;
+}
+`;
+
+const fs3 = 
+`# version 300 es
+#ifdef GL_ES
+precision highp float;
+#endif
+
+in float x;
+
+out vec4 fragColor;
+
+void main(void) {
+    fragColor = vec4(tan(25.0 * x), 0.5, 0.5, 1.0);
+}
+`;
+
+
+const lab2 = [
+    
+        Math.cos(2 * Math.PI * 1/5), Math.sin(2 * Math.PI * 1/5),
+        Math.cos(2 * Math.PI * 2/5), Math.sin(2 * Math.PI * 2/5),
+        Math.cos(2 * Math.PI * 3/5), Math.sin(2 * Math.PI * 3/5),
+        Math.cos(2 * Math.PI * 4/5), Math.sin(2 * Math.PI * 4/5),
+        Math.cos(2 * Math.PI * 5/5), Math.sin(2 * Math.PI * 5/5),
+
+        -1, 1, 1,
+        1, 1, 1,
+        1, 1, -1,
+        -1, 1, -1,
+        
+        -1, -1, 1,
+        1, -1, 1,
+        1, -1, -1,
+        -1, -1, -1,
+
+        -1, 1, 1,
+        1, 1, 1,
+        1, -1, 1,
+        -1, -1, 1,
+
+        -1, 1, -1,
+        1, 1, -1,
+        1, -1, -1,
+        -1, -1, -1,
+
+        1, 1, 1,
+        1, -1, 1,
+        1, -1, -1,
+        1, 1, -1,
+
+        -1, 1, 1,
+        -1, -1, 1,
+        -1, -1, -1,
+        -1, 1, -1,
+
+        -1, -1,
+        1, -1,
+        1, 1,
+        -1, 1,
+    
 ]
 
 function initShaderProgram(gl, vsSource, fsSource) {
@@ -109,37 +194,84 @@ function loadShader(gl, type, source) {
     return shader;
 }
 
+vPos = []
+var projMatrix, viewMatrix, worldMatrix
 function initStuff() {
-    vPos = gl.getAttribLocation(program, "vPos");
-    vCol = gl.getAttribLocation(program, "vCol");
+    for(let i = 0; i < program.length; i++)
+        vPos[i] = gl.getAttribLocation(program[i], "vPos");
 
-    var buf1 = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lab1), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lab2), gl.STATIC_DRAW);
 
-    gl.vertexAttribPointer(vPos, 2, gl.FLOAT, false, 5 * 4, 0);
-    gl.enableVertexAttribArray(vPos);
-    
-    gl.vertexAttribPointer(vCol, 3, gl.FLOAT, false, 5 * 4, 2 * 4);
-    gl.enableVertexAttribArray(vCol);
+	worldMatrix = new Float32Array(16);
+	viewMatrix = new Float32Array(16);
+	projMatrix = new Float32Array(16);
+
+	mat4.identity(worldMatrix);
+	mat4.lookAt(viewMatrix, [0, 0, -8], [0, 0, 0], [0, 1, 0]);
+	mat4.perspective(projMatrix, glMatrix.toRadian(45), gl.canvas.width / gl.canvas.height, 0.1, 1000.0);
+
+	var xRotationMatrix = new Float32Array(16);
+	var yRotationMatrix = new Float32Array(16);
+
+	var identityMatrix = new Float32Array(16);
+	mat4.identity(identityMatrix);
+
+    mat4.rotate(yRotationMatrix, identityMatrix, 0.5, [0, 1, 0]);
+    mat4.rotate(xRotationMatrix, identityMatrix, 0.34, [1, 0, 0]);
+    mat4.mul(worldMatrix, yRotationMatrix, xRotationMatrix);
 }
 
+function useProgram(mode){
+    gl.useProgram(program[mode]);
+    var col = gl.getUniformLocation(program[mode], 'col');
+    switch(mode){
+        case 0:
+            gl.vertexAttribPointer(vPos[mode], 2, gl.FLOAT, false, 0, 0);
+            gl.uniform3f(col, 1.0, 0.0, 0.0);
+            break;
+        case 1:
+            gl.vertexAttribPointer(vPos[mode], 3, gl.FLOAT, false, 0, 2 * 5 * 4);
+
+            gl.uniform3f(col, 1.0, 0.7, 0.05);
+
+            const mProj = gl.getUniformLocation(program[1], 'mProj');
+            const mView = gl.getUniformLocation(program[1], 'mView');
+            const mWorld = gl.getUniformLocation(program[1], 'mWorld');
+            gl.uniformMatrix4fv(mProj, gl.FALSE, projMatrix);
+            gl.uniformMatrix4fv(mView, gl.FALSE, viewMatrix);
+            gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix);
+            break;
+        case 2:
+            gl.vertexAttribPointer(vPos[mode], 2, gl.FLOAT, false, 0, 2 * 5 * 4 + 3 * 24 * 4);
+            break;
+        default:
+            break;
+    }
+    gl.enableVertexAttribArray(vPos[mode]);
+}
+
+let mode = 0;
 function drawScene() {
-    var mRot = gl.getUniformLocation(program, 'mRot');
-
+    console.log("mode = #   [0, 1 or 2]")
     var loop = function(){
-        let angle = performance.now() / 3000 * 2 * Math.PI;
-
-        //mat2.copy([Math.cos(angle), -Math.sin(angle), Math.sin(angle), Math.cos(angle)])
-        
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         
-        gl.uniformMatrix2fv(mRot, gl.FALSE, [1, 0, 0, 1]);
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-        
-        gl.uniformMatrix2fv(mRot, gl.FALSE, [Math.cos(angle), -Math.sin(angle), Math.sin(angle), Math.cos(angle)]);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 4, 3);
-        
+        useProgram(mode);
+        switch (mode) {
+            case 0:
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, 5);
+                break;
+            case 1:
+                for(let i = 0; i < 6; i++)
+                    gl.drawArrays(gl.TRIANGLE_FAN, i * 4, 4);
+                break;
+            case 2:
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+                break;
+            default:
+                break;
+        }
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
