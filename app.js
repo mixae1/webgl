@@ -1,3 +1,5 @@
+document.addEventListener('keydown', onKeyDown, false);
+
 var gl = null;
 var start = function(){
     var canvas = document.getElementById("glcanvas");
@@ -34,31 +36,37 @@ function initWebGL(canvas) {
 
     return gl;
 }
-var program = [];
-var main = function(){
-    program.push(initShaderProgram(gl, vs1, fs1));
-    program.push(initShaderProgram(gl, vs2, fs1));
-    program.push(initShaderProgram(gl, vs3, fs3));
 
+var main = function(){
+    program = initShaderProgram(gl, vs, fs);
+
+    gl.useProgram(program);
     initStuff();
 
     drawScene();
 }
 
-const vs1 = 
+const vs = 
 `# version 300 es
 
-in vec2 vPos;
+uniform mat4 mProj;
+uniform mat4 mView;
+uniform mat4 mWorld;
+
 uniform vec3 col;
+uniform vec3 offset;
+uniform float curr;
+in vec3 vPos;
+
 out vec4 color;
 
 void main(void) {
-    gl_Position = vec4(vPos, 0.0, 2.0);
-    color = vec4(col, 1.0);
+    gl_Position = mProj * mView * mWorld * vec4(vPos, 3.0);
+    color = vec4(col * curr, 1.0);
 }
 `;
 
-const fs1 = 
+const fs = 
 `# version 300 es
 #ifdef GL_ES
 precision highp float;
@@ -73,62 +81,8 @@ void main(void) {
 }
 `;
 
-const vs2 = 
-`# version 300 es
 
-uniform mat4 mProj;
-uniform mat4 mView;
-uniform mat4 mWorld;
-
-uniform vec3 col;
-in vec3 vPos;
-
-out vec4 color;
-
-void main(void) {
-    gl_Position = mProj * mView * mWorld * vec4(vPos, 2.0);
-    color = vec4(col, 1.0);
-}
-`;
-
-
-const vs3 = 
-`# version 300 es
-
-in vec2 vPos;
-
-out float x;
-
-void main(void) {
-    gl_Position = vec4(vPos, 0.0, 3.0);
-    x = vPos.x;
-}
-`;
-
-const fs3 = 
-`# version 300 es
-#ifdef GL_ES
-precision highp float;
-#endif
-
-in float x;
-
-out vec4 fragColor;
-
-void main(void) {
-    fragColor = vec4(tan(25.0 * x), 0.5, 0.5, 1.0);
-}
-`;
-
-
-const lab2 = [
-    
-        Math.cos(2 * Math.PI * 1/5), Math.sin(2 * Math.PI * 1/5),
-        Math.cos(2 * Math.PI * 2/5), Math.sin(2 * Math.PI * 2/5),
-        Math.cos(2 * Math.PI * 3/5), Math.sin(2 * Math.PI * 3/5),
-        Math.cos(2 * Math.PI * 4/5), Math.sin(2 * Math.PI * 4/5),
-        Math.cos(2 * Math.PI * 5/5), Math.sin(2 * Math.PI * 5/5),
-
+const cube = [
         -1, 1, 1,
         1, 1, 1,
         1, 1, -1,
@@ -158,12 +112,6 @@ const lab2 = [
         -1, -1, 1,
         -1, -1, -1,
         -1, 1, -1,
-
-        -1, -1,
-        1, -1,
-        1, 1,
-        -1, 1,
-    
 ]
 
 function initShaderProgram(gl, vsSource, fsSource) {
@@ -194,14 +142,22 @@ function loadShader(gl, type, source) {
     return shader;
 }
 
-vPos = []
-var projMatrix, viewMatrix, worldMatrix
-function initStuff() {
-    for(let i = 0; i < program.length; i++)
-        vPos[i] = gl.getAttribLocation(program[i], "vPos");
+var projMatrix, viewMatrix, worldMatrix, vPos, col, offset,mProj,mView,mWorld, curr
 
+function initStuff() {
+    vPos = gl.getAttribLocation(program, "vPos");
+    col = gl.getUniformLocation(program, 'col');
+    offset = gl.getUniformLocation(program, 'offset');
+    curr = gl.getUniformLocation(program, 'curr');
+    mProj = gl.getUniformLocation(program, 'mProj');
+    mView = gl.getUniformLocation(program, 'mView');
+    mWorld = gl.getUniformLocation(program, 'mWorld');
+    
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lab2), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cube), gl.STATIC_DRAW);
+
+    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vPos);
 
 	worldMatrix = new Float32Array(16);
 	viewMatrix = new Float32Array(16);
@@ -218,62 +174,107 @@ function initStuff() {
 	mat4.identity(identityMatrix);
 
     mat4.rotate(yRotationMatrix, identityMatrix, 0.5, [0, 1, 0]);
-    mat4.rotate(xRotationMatrix, identityMatrix, 0.34, [1, 0, 0]);
+    mat4.rotate(xRotationMatrix, identityMatrix, 0, [1, 0, 0]);
     mat4.mul(worldMatrix, yRotationMatrix, xRotationMatrix);
 }
 
-function useProgram(mode){
-    gl.useProgram(program[mode]);
-    var col = gl.getUniformLocation(program[mode], 'col');
-    switch(mode){
-        case 0:
-            gl.vertexAttribPointer(vPos[mode], 2, gl.FLOAT, false, 0, 0);
-            gl.uniform3f(col, 1.0, 0.0, 0.0);
-            break;
-        case 1:
-            gl.vertexAttribPointer(vPos[mode], 3, gl.FLOAT, false, 0, 2 * 5 * 4);
+const offsets = [
+    [1, 0, 0],
+    [.25, 0, 0],
+    [0.6, 1, -0.5],
+    [0.5, 0, 1],
+    [0, 0, 0] // common offset
+]
 
-            gl.uniform3f(col, 1.0, 0.7, 0.05);
+const colors = [
+    [1, 0, 0],
+    [1, 1, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+]
 
-            const mProj = gl.getUniformLocation(program[1], 'mProj');
-            const mView = gl.getUniformLocation(program[1], 'mView');
-            const mWorld = gl.getUniformLocation(program[1], 'mWorld');
-            gl.uniformMatrix4fv(mProj, gl.FALSE, projMatrix);
-            gl.uniformMatrix4fv(mView, gl.FALSE, viewMatrix);
-            gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix);
-            break;
-        case 2:
-            gl.vertexAttribPointer(vPos[mode], 2, gl.FLOAT, false, 0, 2 * 5 * 4 + 3 * 24 * 4);
-            break;
-        default:
-            break;
-    }
-    gl.enableVertexAttribArray(vPos[mode]);
-}
-
-let mode = 0;
 function drawScene() {
-    console.log("mode = #   [0, 1 or 2]")
+    gl.uniformMatrix4fv(mProj, gl.FALSE, projMatrix);
+    gl.uniformMatrix4fv(mView, gl.FALSE, viewMatrix);
+    gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix);
+
+    for(let i = 0; i < 4; i++){
+        for(let j = 0; j < 3; j++){
+            offsets[4][j] += offsets[i][j]
+        }
+    }
+
+    for(let j = 0; j < 3; j++){
+        offsets[4][j] /= 4
+    }
+
     var loop = function(){
+        var t = (Math.sin(performance.now() / 200) * 0.5 + 0.5)
+
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         
-        useProgram(mode);
-        switch (mode) {
-            case 0:
-                gl.drawArrays(gl.TRIANGLE_FAN, 0, 5);
-                break;
-            case 1:
-                for(let i = 0; i < 6; i++)
-                    gl.drawArrays(gl.TRIANGLE_FAN, i * 4, 4);
-                break;
-            case 2:
-                gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-                break;
-            default:
-                break;
+        if(currObj) gl.clearColor(0.5, 0.5, 0.5, 1)
+        else gl.clearColor(t * 0.5 + 0.3, t * 0.5 + 0.3, t * 0.5 + 0.3, 1)
+
+
+        for(let j = 0; j < 4; j++){
+            const of = offsets[j]
+            const cl = colors[j]
+            gl.uniform3f(offset, of[0], of[1], of[2])
+            gl.uniform3f(col, cl[0], cl[1], cl[2])
+            gl.uniform1f(curr, (currObj == 1 || currObj - 2 == j) ? (Math.sin(t) * 0.5 + 0.5) : 1)
+
+	        mat4.identity(worldMatrix)
+            
+            let cubesCenterOffset = minus(offsets[j], offsets[4])
+
+            mat4.rotate(worldMatrix, worldMatrix, angles[0], [0, 1, 0]) // крутим себя относительно центра мира
+            mat4.translate(worldMatrix, worldMatrix, minus(offsets[j], cubesCenterOffset)) // доходим до своей точки
+            mat4.rotate(worldMatrix, worldMatrix, angles[1], [0, 1, 0]) // крутим себя относительно центра всех коробок
+            mat4.translate(worldMatrix, worldMatrix, cubesCenterOffset) // двигаем на свою точку относительно центра всех коробок
+            mat4.rotate(worldMatrix, worldMatrix, angles[j + 2], [0, 1, 0]) // мы на нуле, крутим себя
+            
+            gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix)
+
+            for(let i = 0; i < 6; i++){
+                gl.drawArrays(gl.TRIANGLE_FAN, i * 4, 4);
+            }
         }
+
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
 }
 
+/**
+ * 
+ * @param {*} currObj 
+ * 0 - everything\
+ * 1 - all cubes\
+ * 2-5 - cubes
+ */
+var currObj = 0;
+
+const angles = [
+    0, 0, 0, 0, 0, 0
+]
+
+function onKeyDown(event)
+{
+    if (event.key == ' ')
+    {
+        currObj = (currObj + 1) % 6
+    }
+    else if (event.key == 'ArrowLeft')
+    {
+        angles[currObj] += 0.05
+    }
+    else if (event.key == 'ArrowRight')
+    {
+        angles[currObj] -= 0.05
+    }
+}
+
+function minus(v1, v2){
+    return [v1[0]-v2[0], v1[1]-v2[1], v1[2]-v2[2]]
+}
