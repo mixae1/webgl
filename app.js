@@ -55,47 +55,26 @@ uniform mat4 mWorld;
 uniform mat3 nMatrix;
 
 uniform vec3 offset;
-uniform float curr;
-
 uniform vec3 uLightPosition;
-uniform vec3 uAmbientLightColor;
-uniform vec3 uDiffuseLightColor;
-uniform vec3 uSpecularLightColor;
 
 in vec3 aVertexPosition;
 in vec3 aVertexNormal;
+in vec3 aVertexNormal2;
 
-out vec3 vLightWeighting;
-uniform vec3 uColor;
-out vec4 vColor;
-
-float shininess = 16.0;
-
-uniform vec3 uAmbientMaterialColor;
-uniform vec3 uDiffuseMaterialColor;
-uniform vec3 uSpecularMaterialColor;
+out vec3 lightDirection;
+out vec3 normal;
+out vec3 vertexPositionEye3;
 
 void main(void) {
     mat4 uMVMatrix = mView * mWorld;
 
     vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
-    vec3 vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+    vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
 
-    vec3 lightDirection = normalize(uLightPosition - vertexPositionEye3);
-    vec3 normal = normalize(nMatrix * aVertexNormal);
-    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
-
-    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
-    vec3 viewVectorEye = -normalize(vertexPositionEye3);
-    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
-    float specularLightParam = pow(specularLightDot, shininess);
-
-    vLightWeighting = uAmbientMaterialColor * uAmbientLightColor +
-                    uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot +
-                    uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
+    lightDirection = normalize(uLightPosition - vertexPositionEye3);
+    normal = normalize(nMatrix * normalize(aVertexNormal));
 
     gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 3.0);
-    vColor = vec4(uColor + curr, 1.0);
 }
 `;
 
@@ -103,54 +82,79 @@ const fs =
 `# version 300 es
 precision highp float;
 
-in vec3 vLightWeighting;
-in vec4 vColor;
+in vec3 lightDirection;
+in vec3 normal;
+in vec3 vertexPositionEye3;
 
+uniform vec3 uAmbientLightColor;
+uniform vec3 uDiffuseLightColor;
+uniform vec3 uSpecularLightColor;
+
+float shininess = 16.0;
+
+uniform vec3 uAmbientMaterialColor;
+uniform vec3 uDiffuseMaterialColor;
+uniform vec3 uSpecularMaterialColor;
+
+uniform vec3 uColor;
+uniform float curr;
 out vec4 fragColor;
 
 void main(void) {
+    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
+    vec3 viewVectorEye = -normalize(vertexPositionEye3);
+    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
+    float specularLightParam = pow(specularLightDot, shininess);
+
+    vec3 vLightWeighting = uAmbientMaterialColor * uAmbientLightColor +
+                    uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot +
+                    uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
+
+    vec4 vColor = vec4(uColor + curr, 1.0);
     fragColor = vec4(vLightWeighting.rgb * vColor.rgb, vColor.a);
 }
 `;
 
 
 var cube = 
-[ // X, Y, Z           normals 
+[ // X, Y, Z             goure          phong
     // Top
-    -1.0, 1.0, -1.0, 0.0, 1.0, 0.0,
-    -1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
-    1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
-    1.0, 1.0, -1.0, 0.0, 1.0, 0.0,
+    -1.0, 1.0, -1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+    -1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+    1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+    1.0, 1.0, -1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
 
     // Left
-    -1.0, 1.0, 1.0, -1.0, 0.0, 0.0,
-    -1.0, -1.0, 1.0, -1.0, 0.0, 0.0,
-    -1.0, -1.0, -1.0, -1.0, 0.0, 0.0,
-    -1.0, 1.0, -1.0, -1.0, 0.0, 0.0,
+    -1.0, 1.0, 1.0, -1.0, 0.0, 0.0, -0.5, 0.0, 0.5,
+    -1.0, -1.0, 1.0, -1.0, 0.0, 0.0, -0.5, 0.0, 0.5,
+    -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, -0.5, 0.0, -0.5,
+    -1.0, 1.0, -1.0, -1.0, 0.0, 0.0, -0.5, 0.0, -0.5,
 
     // Right
-    1.0, 1.0, 1.0, 1.0, 0.0, 0.0,
-    1.0, -1.0, 1.0, 1.0, 0.0, 0.0,
-    1.0, -1.0, -1.0, 1.0, 0.0, 0.0,
-    1.0, 1.0, -1.0, 1.0, 0.0, 0.0,
+    1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.5, 0.0, 0.5,
+    1.0, -1.0, 1.0, 1.0, 0.0, 0.0, 0.5, 0.0, 0.5,
+    1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.5, 0.0, -0.5,
+    1.0, 1.0, -1.0, 1.0, 0.0, 0.0, 0.5, 0.0, -0.5,
 
     // Front
-    1.0, 1.0, 1.0, 0.0, 0.0, 1.0,
-    1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
-    -1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
-    -1.0, 1.0, 1.0, 0.0, 0.0, 1.0,
+    1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.5,
+    1.0, -1.0, 1.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.5,
+    -1.0, -1.0, 1.0, 0.0, 0.0, 1.0, -0.5, 0.0, 0.5,
+    -1.0, 1.0, 1.0, 0.0, 0.0, 1.0, -0.5, 0.0, 0.5,
 
     // Back
-    1.0, 1.0, -1.0, 0.0, 0.0, -1.0,
-    1.0, -1.0, -1.0, 0.0, 0.0, -1.0,
-    -1.0, -1.0, -1.0, 0.0, 0.0, -1.0,
-    -1.0, 1.0, -1.0, 0.0, 0.0, -1.0,
+    1.0, 1.0, -1.0, 0.0, 0.0, -1.0, 0.5, 0.0, -0.5,
+    1.0, -1.0, -1.0, 0.0, 0.0, -1.0, 0.5, 0.0, -0.5,
+    -1.0, -1.0, -1.0, 0.0, 0.0, -1.0, -0.5, 0.0, -0.5,
+    -1.0, 1.0, -1.0, 0.0, 0.0, -1.0, -0.5, 0.0, -0.5,
 
     // Bottom
-    -1.0, -1.0, -1.0, 0.0, -1.0, 0.0,
-    -1.0, -1.0, 1.0, 0.0, -1.0, 0.0,
-    1.0, -1.0, 1.0, 0.0, -1.0, 0.0,
-    1.0, -1.0, -1.0, 0.0, -1.0, 0.0,
+    -1.0, -1.0, -1.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0,
+    -1.0, -1.0, 1.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0,
+    1.0, -1.0, 1.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0,
+    1.0, -1.0, -1.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0,
 ];
 
 var cube_idx =
@@ -214,7 +218,8 @@ function setupLights() {
     uDiffuseLightColor = gl.getUniformLocation(program, 'uDiffuseLightColor');
     uSpecularLightColor = gl.getUniformLocation(program, 'uSpecularLightColor');
     
-    gl.uniform3fv(uLightPosition, [10.0, 10.0, -10.0]);
+    gl.uniform3fv(uLightPosition, [-10.0, 3.0, -5.0]);
+
     gl.uniform3fv(uAmbientLightColor, [0.1, 0.1, 0.1]);
     gl.uniform3fv(uDiffuseLightColor, [0.7, 0.7, 0.7]);
     gl.uniform3fv(uSpecularLightColor, [1.0, 1.0, 1.0]);
@@ -229,11 +234,12 @@ function setupLights() {
 }
 
 var worldMatrix, normMatrix, mWorld, nMatrix, 
-    vPos, vNorm, col, offset, curr
+    vPos, vNorm, vNorm2, col, offset, curr
 
 function initStuff() {
     vPos = gl.getAttribLocation(program, "aVertexPosition");
     vNorm = gl.getAttribLocation(program, "aVertexNormal");
+    vNorm2 = gl.getAttribLocation(program, "aVertexNormal2");
 
     offset = gl.getUniformLocation(program, 'offset');
     curr = gl.getUniformLocation(program, 'curr');
@@ -251,11 +257,13 @@ function initStuff() {
     const b3 = gl.createBuffer()
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b3);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cube_idx), gl.STATIC_DRAW);
-    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 6 * 4, 0);
-    gl.vertexAttribPointer(vNorm, 3, gl.FLOAT, false, 6 * 4, 3 * 4);
+    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 9 * 4, 0);
+    gl.vertexAttribPointer(vNorm, 3, gl.FLOAT, false, 9 * 4, 3 * 4);
+    gl.vertexAttribPointer(vNorm2, 3, gl.FLOAT, false, 9 * 4, 6 * 4);
     
     gl.enableVertexAttribArray(vPos);
     gl.enableVertexAttribArray(vNorm);
+    gl.enableVertexAttribArray(vNorm2);
     
 	worldMatrix = new Float32Array(16);
 	viewMatrix = new Float32Array(16);
