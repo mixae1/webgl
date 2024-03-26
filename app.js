@@ -52,67 +52,133 @@ const vs =
 uniform mat4 mProj;
 uniform mat4 mView;
 uniform mat4 mWorld;
+uniform mat3 nMatrix;
 
-uniform vec3 col;
 uniform vec3 offset;
 uniform float curr;
-in vec3 vPos;
 
-out vec4 color;
+uniform vec3 uLightPosition;
+uniform vec3 uAmbientLightColor;
+uniform vec3 uDiffuseLightColor;
+uniform vec3 uSpecularLightColor;
+
+in vec3 aVertexPosition;
+in vec3 aVertexNormal;
+
+out vec3 vLightWeighting;
+uniform vec3 uColor;
+out vec4 vColor;
+
+float shininess = 16.0;
+
+uniform vec3 uAmbientMaterialColor;
+uniform vec3 uDiffuseMaterialColor;
+uniform vec3 uSpecularMaterialColor;
 
 void main(void) {
-    gl_Position = mProj * mView * mWorld * vec4(vPos, 3.0);
-    color = vec4(col * curr, 1.0);
+    mat4 uMVMatrix = mView * mWorld;
+
+    vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
+    vec3 vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+    vec3 lightDirection = normalize(uLightPosition - vertexPositionEye3);
+    vec3 normal = normalize(nMatrix * aVertexNormal);
+    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
+    vec3 viewVectorEye = -normalize(vertexPositionEye3);
+    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
+    float specularLightParam = pow(specularLightDot, shininess);
+
+    vLightWeighting = uAmbientMaterialColor * uAmbientLightColor +
+                    uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot +
+                    uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
+
+    gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 3.0);
+    vColor = vec4(uColor + curr, 1.0);
 }
 `;
 
 const fs = 
 `# version 300 es
-#ifdef GL_ES
 precision highp float;
-#endif
 
-in vec4 color;
+in vec3 vLightWeighting;
+in vec4 vColor;
 
 out vec4 fragColor;
 
 void main(void) {
-    fragColor = color;
+    fragColor = vec4(vLightWeighting.rgb * vColor.rgb, vColor.a);
 }
 `;
 
 
-const cube = [
-        -1, 1, 1,
-        1, 1, 1,
-        1, 1, -1,
-        -1, 1, -1,
-        
-        -1, -1, 1,
-        1, -1, 1,
-        1, -1, -1,
-        -1, -1, -1,
+var cube = 
+[ // X, Y, Z           normals 
+    // Top
+    -1.0, 1.0, -1.0, 0.0, 1.0, 0.0,
+    -1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+    1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+    1.0, 1.0, -1.0, 0.0, 1.0, 0.0,
 
-        -1, 1, 1,
-        1, 1, 1,
-        1, -1, 1,
-        -1, -1, 1,
+    // Left
+    -1.0, 1.0, 1.0, -1.0, 0.0, 0.0,
+    -1.0, -1.0, 1.0, -1.0, 0.0, 0.0,
+    -1.0, -1.0, -1.0, -1.0, 0.0, 0.0,
+    -1.0, 1.0, -1.0, -1.0, 0.0, 0.0,
 
-        -1, 1, -1,
-        1, 1, -1,
-        1, -1, -1,
-        -1, -1, -1,
+    // Right
+    1.0, 1.0, 1.0, 1.0, 0.0, 0.0,
+    1.0, -1.0, 1.0, 1.0, 0.0, 0.0,
+    1.0, -1.0, -1.0, 1.0, 0.0, 0.0,
+    1.0, 1.0, -1.0, 1.0, 0.0, 0.0,
 
-        1, 1, 1,
-        1, -1, 1,
-        1, -1, -1,
-        1, 1, -1,
+    // Front
+    1.0, 1.0, 1.0, 0.0, 0.0, 1.0,
+    1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
+    -1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
+    -1.0, 1.0, 1.0, 0.0, 0.0, 1.0,
 
-        -1, 1, 1,
-        -1, -1, 1,
-        -1, -1, -1,
-        -1, 1, -1,
-]
+    // Back
+    1.0, 1.0, -1.0, 0.0, 0.0, -1.0,
+    1.0, -1.0, -1.0, 0.0, 0.0, -1.0,
+    -1.0, -1.0, -1.0, 0.0, 0.0, -1.0,
+    -1.0, 1.0, -1.0, 0.0, 0.0, -1.0,
+
+    // Bottom
+    -1.0, -1.0, -1.0, 0.0, -1.0, 0.0,
+    -1.0, -1.0, 1.0, 0.0, -1.0, 0.0,
+    1.0, -1.0, 1.0, 0.0, -1.0, 0.0,
+    1.0, -1.0, -1.0, 0.0, -1.0, 0.0,
+];
+
+var cube_idx =
+[
+    // Top
+    0, 1, 2,
+    0, 2, 3,
+
+    // Left
+    5, 4, 6,
+    6, 4, 7,
+
+    // Right
+    8, 9, 10,
+    8, 10, 11,
+
+    // Front
+    13, 12, 14,
+    15, 14, 12,
+
+    // Back
+    16, 17, 18,
+    16, 18, 19,
+
+    // Bottom
+    21, 20, 22,
+    22, 20, 23
+];
 
 function initShaderProgram(gl, vsSource, fsSource) {
     const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
@@ -142,40 +208,67 @@ function loadShader(gl, type, source) {
     return shader;
 }
 
-var projMatrix, viewMatrix, worldMatrix, vPos, col, offset,mProj,mView,mWorld, curr
+function setupLights() {
+    uLightPosition = gl.getUniformLocation(program, 'uLightPosition');
+    uAmbientLightColor = gl.getUniformLocation(program, 'uAmbientLightColor');
+    uDiffuseLightColor = gl.getUniformLocation(program, 'uDiffuseLightColor');
+    uSpecularLightColor = gl.getUniformLocation(program, 'uSpecularLightColor');
+    
+    gl.uniform3fv(uLightPosition, [10.0, 10.0, -10.0]);
+    gl.uniform3fv(uAmbientLightColor, [0.1, 0.1, 0.1]);
+    gl.uniform3fv(uDiffuseLightColor, [0.7, 0.7, 0.7]);
+    gl.uniform3fv(uSpecularLightColor, [1.0, 1.0, 1.0]);
+
+    uAmbientMaterialColor = gl.getUniformLocation(program, 'uAmbientMaterialColor')
+    uDiffuseMaterialColor = gl.getUniformLocation(program, 'uDiffuseMaterialColor')
+    uSpecularMaterialColor = gl.getUniformLocation(program, 'uSpecularMaterialColor')
+
+    gl.uniform3fv(uAmbientMaterialColor, [1.0, 0.5, 0.31]);
+    gl.uniform3fv(uDiffuseMaterialColor, [1.0, 0.5, 0.31]);
+    gl.uniform3fv(uSpecularMaterialColor, [0.5, 0.5, 0.5]);
+}
+
+var worldMatrix, normMatrix, mWorld, nMatrix, 
+    vPos, vNorm, col, offset, curr
 
 function initStuff() {
-    vPos = gl.getAttribLocation(program, "vPos");
-    col = gl.getUniformLocation(program, 'col');
+    vPos = gl.getAttribLocation(program, "aVertexPosition");
+    vNorm = gl.getAttribLocation(program, "aVertexNormal");
+
     offset = gl.getUniformLocation(program, 'offset');
     curr = gl.getUniformLocation(program, 'curr');
+    col = gl.getUniformLocation(program, 'uColor');
+    
     mProj = gl.getUniformLocation(program, 'mProj');
     mView = gl.getUniformLocation(program, 'mView');
     mWorld = gl.getUniformLocation(program, 'mWorld');
+    nMatrix = gl.getUniformLocation(program, 'nMatrix');
     
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    const b1 = gl.createBuffer()
+    gl.bindBuffer(gl.ARRAY_BUFFER, b1);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cube), gl.STATIC_DRAW);
 
-    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 0, 0);
+    const b3 = gl.createBuffer()
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b3);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cube_idx), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 6 * 4, 0);
+    gl.vertexAttribPointer(vNorm, 3, gl.FLOAT, false, 6 * 4, 3 * 4);
+    
     gl.enableVertexAttribArray(vPos);
-
+    gl.enableVertexAttribArray(vNorm);
+    
 	worldMatrix = new Float32Array(16);
 	viewMatrix = new Float32Array(16);
 	projMatrix = new Float32Array(16);
+    normMatrix = new Float32Array(9);
 
-	mat4.identity(worldMatrix);
 	mat4.lookAt(viewMatrix, [0, 0, -8], [0, 0, 0], [0, 1, 0]);
 	mat4.perspective(projMatrix, glMatrix.toRadian(45), gl.canvas.width / gl.canvas.height, 0.1, 1000.0);
 
-	var xRotationMatrix = new Float32Array(16);
-	var yRotationMatrix = new Float32Array(16);
+    gl.uniformMatrix4fv(mProj, gl.FALSE, projMatrix);
+    gl.uniformMatrix4fv(mView, gl.FALSE, viewMatrix);
 
-	var identityMatrix = new Float32Array(16);
-	mat4.identity(identityMatrix);
-
-    mat4.rotate(yRotationMatrix, identityMatrix, 0.5, [0, 1, 0]);
-    mat4.rotate(xRotationMatrix, identityMatrix, 0, [1, 0, 0]);
-    mat4.mul(worldMatrix, yRotationMatrix, xRotationMatrix);
+    setupLights();
 }
 
 const offsets = [
@@ -194,10 +287,6 @@ const colors = [
 ]
 
 function drawScene() {
-    gl.uniformMatrix4fv(mProj, gl.FALSE, projMatrix);
-    gl.uniformMatrix4fv(mView, gl.FALSE, viewMatrix);
-    gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix);
-
     for(let i = 0; i < 4; i++){
         for(let j = 0; j < 3; j++){
             offsets[4][j] += offsets[i][j]
@@ -209,36 +298,34 @@ function drawScene() {
     }
 
     var loop = function(){
-        var t = (Math.sin(performance.now() / 200) * 0.5 + 0.5)
+        var t = (Math.sin(performance.now() / 200) * 0.5 + 0.5) * 0.2
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         
         if(currObj) gl.clearColor(0.5, 0.5, 0.5, 1)
-        else gl.clearColor(t * 0.5 + 0.3, t * 0.5 + 0.3, t * 0.5 + 0.3, 1)
+        else gl.clearColor(0.5 + t, 0.5 + t, 0.5 + t, 1)
 
 
         for(let j = 0; j < 4; j++){
-            const of = offsets[j]
-            const cl = colors[j]
-            gl.uniform3f(offset, of[0], of[1], of[2])
-            gl.uniform3f(col, cl[0], cl[1], cl[2])
-            gl.uniform1f(curr, (currObj == 1 || currObj - 2 == j) ? (Math.sin(t) * 0.5 + 0.5) : 1)
+            gl.uniform3fv(offset, offsets[j])
+            gl.uniform3fv(col, colors[j])
+            gl.uniform1f(curr, (currObj == 1 || currObj - 2 == j) ? t : 0.0)
 
-	        mat4.identity(worldMatrix)
-            
             let cubesCenterOffset = minus(offsets[j], offsets[4])
-
+            
+	        mat4.identity(worldMatrix)
             mat4.rotate(worldMatrix, worldMatrix, angles[0], [0, 1, 0]) // крутим себя относительно центра мира
             mat4.translate(worldMatrix, worldMatrix, minus(offsets[j], cubesCenterOffset)) // доходим до своей точки
             mat4.rotate(worldMatrix, worldMatrix, angles[1], [0, 1, 0]) // крутим себя относительно центра всех коробок
             mat4.translate(worldMatrix, worldMatrix, cubesCenterOffset) // двигаем на свою точку относительно центра всех коробок
             mat4.rotate(worldMatrix, worldMatrix, angles[j + 2], [0, 1, 0]) // мы на нуле, крутим себя
             
-            gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix)
+            mat3.normalFromMat4(normMatrix, worldMatrix);
 
-            for(let i = 0; i < 6; i++){
-                gl.drawArrays(gl.TRIANGLE_FAN, i * 4, 4);
-            }
+            gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix)
+            gl.uniformMatrix3fv(nMatrix, gl.FALSE, normMatrix)
+
+            gl.drawElements(gl.TRIANGLES, cube_idx.length, gl.UNSIGNED_SHORT, 0);
         }
 
         requestAnimationFrame(loop);
