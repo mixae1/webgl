@@ -1,3 +1,186 @@
+const vsPhong = 
+`# version 300 es
+
+uniform mat4 mProj;
+uniform mat4 mView;
+uniform mat4 mWorld;
+uniform mat3 nMatrix;
+
+uniform vec3 offset;
+uniform vec3 uLightPosition;
+
+in vec3 aVertexPosition;
+in vec3 aVertexNormal;
+
+out vec3 lightDirection;
+out vec3 normal;
+out vec3 vertexPositionEye3;
+
+out float lightDist;
+
+void main(void) {
+    mat4 uMVMatrix = mView * mWorld;
+
+    vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
+    vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+    lightDist = length(uLightPosition - vertexPositionEye3);
+    lightDirection = normalize(uLightPosition - vertexPositionEye3);
+    normal = normalize(nMatrix * normalize(aVertexNormal));
+
+    gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 3.0);
+}
+`;
+
+const fsPhong = 
+`# version 300 es
+precision highp float;
+
+in vec3 lightDirection;
+in vec3 normal;
+in vec3 vertexPositionEye3;
+
+uniform vec3 uAmbientLightColor;
+uniform vec3 uDiffuseLightColor;
+uniform vec3 uSpecularLightColor;
+uniform float uAmbientPower;
+
+float shininess = 16.0;
+
+uniform vec3 uAmbientMaterialColor;
+uniform vec3 uDiffuseMaterialColor;
+uniform vec3 uSpecularMaterialColor;
+
+uniform vec3 uColor;
+uniform float curr;
+out vec4 fragColor;
+
+in float lightDist;
+uniform float uLinDist;
+
+uniform float lambert;
+
+uniform float quad;
+uniform float uQuadConst;
+uniform float uQuadLin;
+uniform float uQuadQuad;
+
+void main(void) {
+    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
+    vec3 viewVectorEye = normalize(vertexPositionEye3);
+    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
+    float specularLightParam = pow(specularLightDot, shininess);
+
+    vec3 vLightWeighting = uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot;
+    if(lambert == 0.0){
+        vLightWeighting += uAmbientMaterialColor * uAmbientLightColor * uAmbientPower +
+            uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
+    }
+
+    float F = 0.0;
+    if(quad == 0.0){
+        F = min(lightDist / uLinDist, 1.0);
+    } else {
+        F = 1.0 / (uQuadConst + uQuadLin * lightDist + uQuadQuad * lightDist * lightDist);
+    }
+
+    vec4 vColor = vec4(uColor + curr, 1.0);
+    fragColor = vec4(vLightWeighting.rgb * vColor.rgb * F, vColor.a);
+}
+`;
+
+
+const vsGouraud = 
+`# version 300 es
+
+uniform mat4 mProj;
+uniform mat4 mView;
+uniform mat4 mWorld;
+uniform mat3 nMatrix;
+
+uniform vec3 offset;
+uniform float curr;
+
+uniform vec3 uLightPosition;
+uniform vec3 uAmbientLightColor;
+uniform vec3 uDiffuseLightColor;
+uniform vec3 uSpecularLightColor;
+uniform float uAmbientPower;
+
+in vec3 aVertexPosition;
+in vec3 aVertexNormal;
+
+out vec3 vLightWeighting;
+uniform vec3 uColor;
+out vec4 vColor;
+
+float shininess = 16.0;
+
+uniform vec3 uAmbientMaterialColor;
+uniform vec3 uDiffuseMaterialColor;
+uniform vec3 uSpecularMaterialColor;
+
+uniform float lambert;
+
+out float lightDist;
+
+void main(void) {
+    mat4 uMVMatrix = mView * mWorld;
+
+    vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
+    vec3 vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+    lightDist = length(uLightPosition - vertexPositionEye3);
+    vec3 lightDirection = normalize(uLightPosition - vertexPositionEye3);
+    vec3 normal = normalize(nMatrix * aVertexNormal);
+    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
+    vec3 viewVectorEye = normalize(vertexPositionEye3);
+    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
+    float specularLightParam = pow(specularLightDot, shininess);
+
+    vLightWeighting = uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot;
+    if(lambert == 0.0){
+        vLightWeighting += uAmbientMaterialColor * uAmbientLightColor * uAmbientPower +
+            uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
+    }
+
+    gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 3.0);
+    vColor = vec4(uColor + curr, 1.0);
+}
+`;
+
+const fsGouraud = 
+`# version 300 es
+precision highp float;
+
+in vec3 vLightWeighting;
+in vec4 vColor;
+in float lightDist;
+
+uniform float uLinDist;
+
+out vec4 fragColor;
+
+uniform float quad;
+uniform float uQuadConst;
+uniform float uQuadLin;
+uniform float uQuadQuad;
+
+void main(void) {
+    float F = 0.0;
+    if(quad == 0.0){
+        F = min(lightDist / uLinDist, 1.0);
+    } else {
+        F = 1.0 / (uQuadConst + uQuadLin * lightDist + uQuadQuad * lightDist * lightDist);
+    }
+    fragColor = vec4(vLightWeighting.rgb * vColor.rgb * F, vColor.a);
+}
+`;
+
 document.addEventListener('keydown', onKeyDown, false);
 
 var gl = null;
@@ -37,86 +220,27 @@ function initWebGL(canvas) {
     return gl;
 }
 
-var main = function(){
-    program = initShaderProgram(gl, vs, fs);
+var currentShader = null
+var Gourand = {}
+var Phong = {}
 
-    gl.useProgram(program);
-    initStuff();
+var main = function(){
+    Gourand.useNorm = 1
+    Phong.useNorm = 2
+
+    Gourand.program = initShaderProgram(gl, vsGouraud, fsGouraud);
+    gl.useProgram(Gourand.program);
+    initStuff(Gourand)
+    
+    Phong.program = initShaderProgram(gl, vsPhong, fsPhong)
+    gl.useProgram(Phong.program);
+    initStuff(Phong)
+    
+    currentShader = Gourand
+    gl.useProgram(currentShader.program)
 
     drawScene();
 }
-
-const vs = 
-`# version 300 es
-
-uniform mat4 mProj;
-uniform mat4 mView;
-uniform mat4 mWorld;
-uniform mat3 nMatrix;
-
-uniform vec3 offset;
-uniform vec3 uLightPosition;
-
-in vec3 aVertexPosition;
-in vec3 aVertexNormal;
-in vec3 aVertexNormal2;
-
-out vec3 lightDirection;
-out vec3 normal;
-out vec3 vertexPositionEye3;
-
-void main(void) {
-    mat4 uMVMatrix = mView * mWorld;
-
-    vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
-    vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
-
-    lightDirection = normalize(uLightPosition - vertexPositionEye3);
-    normal = normalize(nMatrix * normalize(aVertexNormal));
-
-    gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 3.0);
-}
-`;
-
-const fs = 
-`# version 300 es
-precision highp float;
-
-in vec3 lightDirection;
-in vec3 normal;
-in vec3 vertexPositionEye3;
-
-uniform vec3 uAmbientLightColor;
-uniform vec3 uDiffuseLightColor;
-uniform vec3 uSpecularLightColor;
-
-float shininess = 16.0;
-
-uniform vec3 uAmbientMaterialColor;
-uniform vec3 uDiffuseMaterialColor;
-uniform vec3 uSpecularMaterialColor;
-
-uniform vec3 uColor;
-uniform float curr;
-out vec4 fragColor;
-
-void main(void) {
-    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
-
-    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
-    vec3 viewVectorEye = -normalize(vertexPositionEye3);
-    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
-    float specularLightParam = pow(specularLightDot, shininess);
-
-    vec3 vLightWeighting = uAmbientMaterialColor * uAmbientLightColor +
-                    uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot +
-                    uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
-
-    vec4 vColor = vec4(uColor + curr, 1.0);
-    fragColor = vec4(vLightWeighting.rgb * vColor.rgb, vColor.a);
-}
-`;
-
 
 var cube = 
 [ // X, Y, Z             goure          phong
@@ -212,43 +336,58 @@ function loadShader(gl, type, source) {
     return shader;
 }
 
-function setupLights() {
-    uLightPosition = gl.getUniformLocation(program, 'uLightPosition');
-    uAmbientLightColor = gl.getUniformLocation(program, 'uAmbientLightColor');
-    uDiffuseLightColor = gl.getUniformLocation(program, 'uDiffuseLightColor');
-    uSpecularLightColor = gl.getUniformLocation(program, 'uSpecularLightColor');
+function setupLights(shader) {
+    shader.uLightPosition = gl.getUniformLocation(shader.program, 'uLightPosition');
+    shader.uAmbientLightColor = gl.getUniformLocation(shader.program, 'uAmbientLightColor');
+    shader.uDiffuseLightColor = gl.getUniformLocation(shader.program, 'uDiffuseLightColor');
+    shader.uSpecularLightColor = gl.getUniformLocation(shader.program, 'uSpecularLightColor');
     
-    gl.uniform3fv(uLightPosition, [-10.0, 3.0, -5.0]);
+    gl.uniform3fv(shader.uLightPosition, [-10.0, 3.0, -10.0]);
 
-    gl.uniform3fv(uAmbientLightColor, [0.1, 0.1, 0.1]);
-    gl.uniform3fv(uDiffuseLightColor, [0.7, 0.7, 0.7]);
-    gl.uniform3fv(uSpecularLightColor, [1.0, 1.0, 1.0]);
+    gl.uniform3fv(shader.uAmbientLightColor, [0.1, 0.1, 0.1]);
+    gl.uniform3fv(shader.uDiffuseLightColor, [0.7, 0.7, 0.7]);
+    gl.uniform3fv(shader.uSpecularLightColor, [1.0, 1.0, 1.0]);
 
-    uAmbientMaterialColor = gl.getUniformLocation(program, 'uAmbientMaterialColor')
-    uDiffuseMaterialColor = gl.getUniformLocation(program, 'uDiffuseMaterialColor')
-    uSpecularMaterialColor = gl.getUniformLocation(program, 'uSpecularMaterialColor')
+    shader.uAmbientMaterialColor = gl.getUniformLocation(shader.program, 'uAmbientMaterialColor')
+    shader.uDiffuseMaterialColor = gl.getUniformLocation(shader.program, 'uDiffuseMaterialColor')
+    shader.uSpecularMaterialColor = gl.getUniformLocation(shader.program, 'uSpecularMaterialColor')
 
-    gl.uniform3fv(uAmbientMaterialColor, [1.0, 0.5, 0.31]);
-    gl.uniform3fv(uDiffuseMaterialColor, [1.0, 0.5, 0.31]);
-    gl.uniform3fv(uSpecularMaterialColor, [0.5, 0.5, 0.5]);
+    gl.uniform3fv(shader.uAmbientMaterialColor, [1.0, 0.5, 0.31]);
+    gl.uniform3fv(shader.uDiffuseMaterialColor, [1.0, 0.5, 0.31]);
+    gl.uniform3fv(shader.uSpecularMaterialColor, [0.5, 0.5, 0.5]);
+
+    shader.lambert = gl.getUniformLocation(shader.program, 'lambert')
+    gl.uniform1f(shader.lambert, 0.0)
+
+    shader.uAmbientPower = gl.getUniformLocation(shader.program, 'uAmbientPower')
+    gl.uniform1f(shader.uAmbientPower, 0.5)
+
+    shader.uLinDist = gl.getUniformLocation(shader.program, 'uLinDist')
+    gl.uniform1f(shader.uLinDist, 10)
+
+    shader.uQuadConst = gl.getUniformLocation(shader.program, 'uQuadConst')
+    shader.uQuadLin = gl.getUniformLocation(shader.program, 'uQuadLin')
+    shader.uQuadQuad = gl.getUniformLocation(shader.program, 'uQuadQuad')
+    shader.quad = gl.getUniformLocation(shader.program, 'quad')
+
+    gl.uniform1f(shader.uQuadConst, 10)
+    gl.uniform1f(shader.uQuadLin, 10)
+    gl.uniform1f(shader.uQuadQuad, 10)
+    gl.uniform1f(shader.quad, 0)
 }
 
-var worldMatrix, normMatrix, mWorld, nMatrix, 
-    vPos, vNorm, vNorm2, col, offset, curr
+function initStuff(shader) {
+    shader.vPos = gl.getAttribLocation(shader.program, "aVertexPosition");
+    shader.vNorm = gl.getAttribLocation(shader.program, "aVertexNormal");
 
-function initStuff() {
-    vPos = gl.getAttribLocation(program, "aVertexPosition");
-    vNorm = gl.getAttribLocation(program, "aVertexNormal");
-    vNorm2 = gl.getAttribLocation(program, "aVertexNormal2");
-
-    offset = gl.getUniformLocation(program, 'offset');
-    curr = gl.getUniformLocation(program, 'curr');
-    col = gl.getUniformLocation(program, 'uColor');
+    shader.offset = gl.getUniformLocation(shader.program, 'offset');
+    shader.curr = gl.getUniformLocation(shader.program, 'curr');
+    shader.col = gl.getUniformLocation(shader.program, 'uColor');
     
-    mProj = gl.getUniformLocation(program, 'mProj');
-    mView = gl.getUniformLocation(program, 'mView');
-    mWorld = gl.getUniformLocation(program, 'mWorld');
-    nMatrix = gl.getUniformLocation(program, 'nMatrix');
+    shader.mProj = gl.getUniformLocation(shader.program, 'mProj');
+    shader.mView = gl.getUniformLocation(shader.program, 'mView');
+    shader.mWorld = gl.getUniformLocation(shader.program, 'mWorld');
+    shader.nMatrix = gl.getUniformLocation(shader.program, 'nMatrix');
     
     const b1 = gl.createBuffer()
     gl.bindBuffer(gl.ARRAY_BUFFER, b1);
@@ -257,26 +396,32 @@ function initStuff() {
     const b3 = gl.createBuffer()
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b3);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cube_idx), gl.STATIC_DRAW);
-    gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 9 * 4, 0);
-    gl.vertexAttribPointer(vNorm, 3, gl.FLOAT, false, 9 * 4, 3 * 4);
-    gl.vertexAttribPointer(vNorm2, 3, gl.FLOAT, false, 9 * 4, 6 * 4);
+    gl.vertexAttribPointer(shader.vPos, 3, gl.FLOAT, false, 9 * 4, 0);
+    switch (shader.useNorm) {
+        case 1:
+            gl.vertexAttribPointer(shader.vNorm, 3, gl.FLOAT, false, 9 * 4, 3 * 4);
+            break;
+        case 2:
+            gl.vertexAttribPointer(shader.vNorm, 3, gl.FLOAT, false, 9 * 4, 6 * 4);
+            break;
     
-    gl.enableVertexAttribArray(vPos);
-    gl.enableVertexAttribArray(vNorm);
-    gl.enableVertexAttribArray(vNorm2);
+        default:
+            break;
+    }
     
-	worldMatrix = new Float32Array(16);
-	viewMatrix = new Float32Array(16);
-	projMatrix = new Float32Array(16);
-    normMatrix = new Float32Array(9);
+    gl.enableVertexAttribArray(shader.vPos);
+    gl.enableVertexAttribArray(shader.vNorm);
+    
+	shader.viewMatrix = new Float32Array(16);
+	shader.projMatrix = new Float32Array(16);
 
-	mat4.lookAt(viewMatrix, [0, 0, -8], [0, 0, 0], [0, 1, 0]);
-	mat4.perspective(projMatrix, glMatrix.toRadian(45), gl.canvas.width / gl.canvas.height, 0.1, 1000.0);
+	mat4.lookAt(shader.viewMatrix, [0, 0, -8], [0, 0, 0], [0, 1, 0]);
+	mat4.perspective(shader.projMatrix, glMatrix.toRadian(45), gl.canvas.width / gl.canvas.height, 0.1, 1000.0);
 
-    gl.uniformMatrix4fv(mProj, gl.FALSE, projMatrix);
-    gl.uniformMatrix4fv(mView, gl.FALSE, viewMatrix);
+    gl.uniformMatrix4fv(shader.mProj, gl.FALSE, shader.projMatrix);
+    gl.uniformMatrix4fv(shader.mView, gl.FALSE, shader.viewMatrix);
 
-    setupLights();
+    setupLights(shader);
 }
 
 const offsets = [
@@ -305,6 +450,9 @@ function drawScene() {
         offsets[4][j] /= 4
     }
 
+    var worldMatrix = new Float32Array(16)
+    var normMatrix = new Float32Array(9);
+
     var loop = function(){
         var t = (Math.sin(performance.now() / 200) * 0.5 + 0.5) * 0.2
 
@@ -313,14 +461,15 @@ function drawScene() {
         if(currObj) gl.clearColor(0.5, 0.5, 0.5, 1)
         else gl.clearColor(0.5 + t, 0.5 + t, 0.5 + t, 1)
 
+        gl.uniform1f(currentShader.uLinDist, linDistance)
 
         for(let j = 0; j < 4; j++){
-            gl.uniform3fv(offset, offsets[j])
-            gl.uniform3fv(col, colors[j])
-            gl.uniform1f(curr, (currObj == 1 || currObj - 2 == j) ? t : 0.0)
+            gl.uniform3fv(currentShader.offset, offsets[j])
+            gl.uniform3fv(currentShader.col, colors[j])
+            gl.uniform1f(currentShader.curr, (currObj == 1 || currObj - 2 == j) ? t : 0.0)
 
             let cubesCenterOffset = minus(offsets[j], offsets[4])
-            
+
 	        mat4.identity(worldMatrix)
             mat4.rotate(worldMatrix, worldMatrix, angles[0], [0, 1, 0]) // крутим себя относительно центра мира
             mat4.translate(worldMatrix, worldMatrix, minus(offsets[j], cubesCenterOffset)) // доходим до своей точки
@@ -330,8 +479,8 @@ function drawScene() {
             
             mat3.normalFromMat4(normMatrix, worldMatrix);
 
-            gl.uniformMatrix4fv(mWorld, gl.FALSE, worldMatrix)
-            gl.uniformMatrix3fv(nMatrix, gl.FALSE, normMatrix)
+            gl.uniformMatrix4fv(currentShader.mWorld, gl.FALSE, worldMatrix)
+            gl.uniformMatrix3fv(currentShader.nMatrix, gl.FALSE, normMatrix)
 
             gl.drawElements(gl.TRIANGLES, cube_idx.length, gl.UNSIGNED_SHORT, 0);
         }
@@ -354,6 +503,9 @@ const angles = [
     0, 0, 0, 0, 0, 0
 ]
 
+var ambientPower = 0.5
+var linDistance = 10
+var quadConst = 10, quadLin = 10, quadQuad = 10
 function onKeyDown(event)
 {
     if (event.key == ' ')
@@ -368,6 +520,37 @@ function onKeyDown(event)
     {
         angles[currObj] -= 0.05
     }
+    else if (event.key == 'P'){
+        currentShader = Phong
+        gl.useProgram(currentShader.program)
+    }
+    else if (event.key == 'G'){
+        currentShader = Gourand
+        gl.useProgram(currentShader.program)
+    }
+    else if (event.key == 'l'){
+        gl.uniform1f(currentShader.lambert, 0)
+    }
+    else if (event.key == 'L'){
+        gl.uniform1f(currentShader.lambert, 1)
+    }
+    else if (event.key == 'q'){
+        gl.uniform1f(currentShader.quad, 0)
+    }
+    else if (event.key == 'Q'){
+        gl.uniform1f(currentShader.quad, 1)
+    }
+    else if (event.key == 'ArrowUp'){
+        ambientPower = Math.min(ambientPower + 0.05, 1.0)
+    }
+    else if (event.key == 'ArrowDown'){
+        ambientPower = Math.max(ambientPower - 0.05, 0.0)
+    }
+
+    gl.uniform1f(currentShader.uAmbientPower, ambientPower)
+    gl.uniform1f(currentShader.uQuadConst, quadConst)
+    gl.uniform1f(currentShader.uQuadLin, quadLin)
+    gl.uniform1f(currentShader.uQuadQuad, quadQuad)
 }
 
 function minus(v1, v2){
