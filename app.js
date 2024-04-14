@@ -13,10 +13,12 @@ uniform vec3 uLightPosition;
 
 in vec3 aVertexPosition;
 in vec3 aVertexNormal;
+in vec2 aVertexTexure;
 
 out vec3 lightDirection;
 out vec3 normal;
 out vec3 vertexPositionEye3;
+out vec2 textureCord;
 
 out float lightDist;
 
@@ -31,6 +33,7 @@ void main(void) {
     normal = normalize(nMatrix * normalize(aVertexNormal));
 
     gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 1.0);
+    textureCord = aVertexTexure;
 }
 `;
 
@@ -65,6 +68,12 @@ uniform float uQuadConst;
 uniform float uQuadLin;
 uniform float uQuadQuad;
 
+uniform sampler2D texture0;
+uniform sampler2D texture1;
+in vec2 textureCord;
+
+uniform float textMix;
+
 void main(void) {
     float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
 
@@ -82,11 +91,22 @@ void main(void) {
     float F = 1.0 / (uQuadConst + uQuadLin * lightDist + uQuadQuad * lightDist * lightDist);
 
     vec4 vColor = vec4(uColor + curr, 1.0);
-    fragColor = vec4(vLightWeighting.rgb * vColor.rgb * F, vColor.a);
+    vec4 text0 = texture(texture0, textureCord);
+    vec4 text1 = texture(texture1, textureCord);
+    fragColor = vec4(vLightWeighting.rgb * F * 
+        mix(                
+            mix(
+                vColor.rgb, 
+                text0.xyz, 
+                0.5),
+            text1.xyz, 
+            textMix
+        ), 
+        vColor.a);
 }
 `;
 
-document.addEventListener('keydown', onKeyDown, false);
+// document.addEventListener('keydown', onKeyDown, false);
 
 var gl = null;
 var start = function(){
@@ -128,9 +148,15 @@ function initWebGL(canvas) {
 const mesh = new glmesh('./cube.obj')
 await mesh.load()
 
-await new Promise(r => setTimeout(r, 1000));
+var image0 = new Image();
+image0.src = './uv2.png'
 
-console.log(mesh.data)
+var image1 = new Image();
+image1.src = './uv3.png'
+
+image1.onload = await new Promise(r => setTimeout(r, 500));
+
+await new Promise(r => setTimeout(r, 1000));
 
 const cubes = []
 
@@ -139,16 +165,35 @@ var main = function(){
     for (let index = 0; index < 4; index++) {
         const Phong = {}
         Phong.program = initShaderProgram(gl, vsPhong, fsPhong)
-        const temp = new globject(mesh, Phong)
+        const params = {
+            shader: Phong,
+            mesh: mesh,
+            images: [image0, image1],
+            id: index.toString(),
+            gl: gl
+        }
+        const temp = new globject(params)
         temp.glinit(gl)
         temp.setupLights(gl)
-        cubes.push(new globject(mesh, Phong))
+        cubes.push(temp)
     }
 
-    cubes[0].offset = [-2, 0, 0]
-    cubes[1].offset = [0, 0, 0]
-    cubes[2].offset = [2, 0, 0]
-    cubes[3].offset = [0, 2, 0]
+    cubes[0].offset = [-2, -1, 0]
+    cubes[1].offset = [0, -1, 0]
+    cubes[2].offset = [2, -1, 0]
+    cubes[3].offset = [0, 1, 0]
+
+    const PI = Math.PI
+
+    cubes[0].angle = [0, 0, 0]
+    cubes[1].angle = [0, PI / 2, PI]
+    cubes[2].angle = [PI, PI / 2, -PI]
+    cubes[3].angle = [PI, 0, 2 * PI]
+
+    cubes[0].color = [0.0, 0.9, 0.7]
+    cubes[1].color = [0.5, 0.5, 0.0]
+    cubes[2].color = [0.0, 0.3, 0.3]
+    cubes[3].color = [0.2, 0.1, 0.0]
 
     drawScene();
 }
@@ -194,10 +239,6 @@ function drawScene() {
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
-}
-
-function onKeyDown(event)
-{
 }
 
 window.onload = start()
