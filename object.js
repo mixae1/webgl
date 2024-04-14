@@ -8,21 +8,56 @@ export class glmesh {
     constructor(objname) {
         this.objname = objname
         this.data = []
+        this.indices = []
     }
 
-    async load() {
+    async load(fast = true) {
         fetch(this.objname)
         .then(response => response.text())
         .then(text => {
             const cache = new OBJFile(text).parse()
             cache.models[0].faces.forEach(face => {
+                const _indices = []
                 face.vertices.forEach(vert => {
-                    this.data.push([
-                                ...this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1]),
-                                ...this.__xyz(cache.models[0].vertexNormals[vert.vertexNormalIndex - 1]),
-                                ...this.__uv(cache.models[0].textureCoords[vert.textureCoordsIndex - 1])
-                            ])
+                    if(fast){
+                        _indices.push(this.data.length)
+                        this.data.push([
+                            ...this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1]),
+                            ...this.__xyz(cache.models[0].vertexNormals[vert.vertexNormalIndex - 1]),
+                            ...this.__uv(cache.models[0].textureCoords[vert.textureCoordsIndex - 1])
+                        ])
+                        return;
+                    }
+
+                    let exit = false;
+                    for (let j = 0; j < cache.models[0].faces.length; j++) {
+                        const face2 = cache.models[0].faces[j];
+                        if(face == face2) {
+                            break;
+                        }
+                        for (let index = 0; index < 3; index++) {
+                            const val = face2.vertices[index];
+                            if(vert.vertexIndex == val.vertexIndex && vert.vertexNormalIndex == val.vertexNormalIndex && vert.textureCoordsIndex == val.textureCoordsIndex){
+                                _indices.push(val.ind)
+                                exit = true
+                                break;
+                            }  
+                        }
+                        
+                        if(exit) break;
+                    }
+                    
+                    if(!exit) {
+                        _indices.push(this.data.length)
+                        vert.ind = this.data.length
+                        this.data.push([
+                            ...this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1]),
+                            ...this.__xyz(cache.models[0].vertexNormals[vert.vertexNormalIndex - 1]),
+                            ...this.__uv(cache.models[0].textureCoords[vert.textureCoordsIndex - 1])
+                        ])
+                    }
                 });
+                this.indices.push(_indices);
             });
         })
         .catch(e => console.error(e))
@@ -50,12 +85,6 @@ export class globject {
         this.images = params.images
         this.shader = params.shader
         this.color = params.color
-        this.textMix = 0.5
-        this.slider = document.getElementById(params.id)
-
-        this.slider.oninput = () => {
-            this.textMix = this.slider.value;
-          }
     }
 
     glinit(gl) {
@@ -75,8 +104,6 @@ export class globject {
 
         this.shader.texture0 = gl.getUniformLocation(this.shader.program, 'texture0');
         this.shader.texture1 = gl.getUniformLocation(this.shader.program, 'texture1');
-
-        this.shader.textMix = gl.getUniformLocation(this.shader.program, 'textMix');
         
         this.VBO = gl.createBuffer()
         gl.bindBuffer(gl.ARRAY_BUFFER, this.VBO);
@@ -91,10 +118,9 @@ export class globject {
         gl.vertexAttribPointer(this.shader.vText, 2, gl.FLOAT, false, 8 * 4, 6 * 4);
         gl.enableVertexAttribArray(this.shader.vText);
         
-
-        // const b4 = gl.createBuffer()
-        // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b4);
-        // gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.mesh.models[0].faces, gl.STATIC_DRAW);
+        this.IBO = gl.createBuffer()
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.IBO);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.mesh.indices.flat()), gl.STATIC_DRAW);
         
         this.shader.viewMatrix = new Float32Array(16);
         this.shader.projMatrix = new Float32Array(16);
@@ -121,7 +147,7 @@ export class globject {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 
-        gl.uniform1f(this.shader.textMix, 0.5);
+        console.log(this.mesh)
     }
 
     setupLights(gl) {
@@ -169,7 +195,6 @@ export class globject {
         gl.uniform1f(this.shader.curr, 0.0)
         gl.uniform1i(this.shader.texture0, 0);
         gl.uniform1i(this.shader.texture1, 1);
-        gl.uniform1f(this.shader.textMix, this.textMix);
 
         mat4.identity(this.worldMatrix)
         mat4.rotate(this.worldMatrix, this.worldMatrix, 0.5 + t, [0, 1, 0]) // крутим себя относительно центра мира
@@ -185,6 +210,8 @@ export class globject {
         gl.uniformMatrix3fv(this.shader.nMatrix, gl.FALSE, normMatrix)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.VBO);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.IBO);
+        //gl.drawElements(gl.TRIANGLES, this.mesh.indices.flat().length, gl.UNSIGNED_SHORT, 0)
         gl.drawArrays(gl.TRIANGLES, 0, this.mesh.data.length);
     }
 }

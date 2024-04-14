@@ -22,6 +22,8 @@ out vec2 textureCord;
 
 out float lightDist;
 
+out vec4 vpos;
+
 void main(void) {
     mat4 uMVMatrix = mView * mWorld;
 
@@ -32,7 +34,8 @@ void main(void) {
     lightDirection = normalize(uLightPosition - vertexPositionEye3);
     normal = normalize(nMatrix * normalize(aVertexNormal));
 
-    gl_Position = mProj * uMVMatrix * vec4(aVertexPosition, 1.0);
+    vpos = mProj * uMVMatrix * vec4(aVertexPosition, 2.0);
+    gl_Position = vpos;
     textureCord = aVertexTexure;
 }
 `;
@@ -74,10 +77,20 @@ in vec2 textureCord;
 
 uniform float textMix;
 
-void main(void) {
-    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+in vec4 vpos;
 
-    vec3 reflectionVector = normalize(reflect(-lightDirection, normal));
+float normal_add() {
+    float currH = texture(texture1, textureCord).x;
+    float xH = texture(texture1, textureCord + dFdx(textureCord)).x - currH;
+    float yH = texture(texture1, textureCord + dFdy(textureCord)).x - currH;
+    return textureCord.x * xH + textureCord.y * yH;
+}
+
+void main(void) {
+    vec3 newnormal = normal + normal_add();
+    float diffuseLightDot = max(dot(newnormal, lightDirection), 0.0);
+
+    vec3 reflectionVector = normalize(reflect(-lightDirection, newnormal));
     vec3 viewVectorEye = normalize(vertexPositionEye3);
     float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
     float specularLightParam = pow(specularLightDot, shininess);
@@ -92,17 +105,7 @@ void main(void) {
 
     vec4 vColor = vec4(uColor + curr, 1.0);
     vec4 text0 = texture(texture0, textureCord);
-    vec4 text1 = texture(texture1, textureCord);
-    fragColor = vec4(vLightWeighting.rgb * F * 
-        mix(                
-            mix(
-                vColor.rgb, 
-                text0.xyz, 
-                0.5),
-            text1.xyz, 
-            textMix
-        ), 
-        vColor.a);
+    fragColor = vec4(vLightWeighting.rgb * F * text0.xyz, vColor.a);
 }
 `;
 
@@ -145,14 +148,14 @@ function initWebGL(canvas) {
     return gl;
 }
 
-const mesh = new glmesh('./cube.obj')
+const mesh = new glmesh('./orange.obj')
 await mesh.load()
 
 var image0 = new Image();
-image0.src = './uv2.png'
+image0.src = './orangeC.jpg'
 
 var image1 = new Image();
-image1.src = './uv3.png'
+image1.src = './bump2.jpg';
 
 image1.onload = await new Promise(r => setTimeout(r, 500));
 
@@ -162,7 +165,7 @@ const cubes = []
 
 var main = function(){ 
    
-    for (let index = 0; index < 4; index++) {
+    for (let index = 0; index < 1; index++) {
         const Phong = {}
         Phong.program = initShaderProgram(gl, vsPhong, fsPhong)
         const params = {
@@ -170,30 +173,15 @@ var main = function(){
             mesh: mesh,
             images: [image0, image1],
             id: index.toString(),
-            gl: gl
+            color: [0, 0, 0],
+            angle: [0, 0, 0],
+            offset: [0, 0, 0]
         }
         const temp = new globject(params)
         temp.glinit(gl)
         temp.setupLights(gl)
         cubes.push(temp)
     }
-
-    cubes[0].offset = [-2, -1, 0]
-    cubes[1].offset = [0, -1, 0]
-    cubes[2].offset = [2, -1, 0]
-    cubes[3].offset = [0, 1, 0]
-
-    const PI = Math.PI
-
-    cubes[0].angle = [0, 0, 0]
-    cubes[1].angle = [0, PI / 2, PI]
-    cubes[2].angle = [PI, PI / 2, -PI]
-    cubes[3].angle = [PI, 0, 2 * PI]
-
-    cubes[0].color = [0.0, 0.9, 0.7]
-    cubes[1].color = [0.5, 0.5, 0.0]
-    cubes[2].color = [0.0, 0.3, 0.3]
-    cubes[3].color = [0.2, 0.1, 0.0]
 
     drawScene();
 }
