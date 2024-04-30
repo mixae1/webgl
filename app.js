@@ -34,7 +34,7 @@ void main(void) {
     lightDirection = normalize(uLightPosition - vertexPositionEye3);
     normal = normalize(nMatrix * normalize(aVertexNormal));
 
-    vpos = mProj * uMVMatrix * vec4(aVertexPosition, 2.0);
+    vpos = mProj * uMVMatrix * vec4(aVertexPosition, 0.7);
     gl_Position = vpos;
     textureCord = aVertexTexure;
 }
@@ -148,14 +148,14 @@ function initWebGL(canvas) {
     return gl;
 }
 
-const mesh = new glmesh('./orange.obj')
+const mesh = new glmesh('./model.obj')
 await mesh.load()
 
 var image0 = new Image();
-image0.src = './orangeC.jpg'
+image0.src = './model.jpg'
 
 var image1 = new Image();
-image1.src = './bump2.jpg';
+image1.src = './model.jpg';
 
 image1.onload = await new Promise(r => setTimeout(r, 500));
 
