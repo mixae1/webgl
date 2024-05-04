@@ -8,7 +8,7 @@ export class glmesh {
     constructor(objname) {
         this.objname = objname
         this.data = []
-        this.indices = []
+        this.collision_box = [0, 0, 0, 0, 0, 0] //minx miny minz maxx maxy maxz
     }
 
     async load(fast = true) {
@@ -17,47 +17,38 @@ export class glmesh {
         .then(text => {
             const cache = new OBJFile(text).parse()
             cache.models[0].faces.forEach(face => {
-                const _indices = []
-                face.vertices.forEach(vert => {
-                    if(fast){
-                        _indices.push(this.data.length)
-                        this.data.push([
-                            ...this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1]),
-                            ...this.__xyz(cache.models[0].vertexNormals[vert.vertexNormalIndex - 1]),
-                            ...this.__uv(cache.models[0].textureCoords[vert.textureCoordsIndex - 1])
-                        ])
-                        return;
-                    }
+                for(let i = 2; i < face.vertices.length; i++){
+                    this.data.push([
+                        ...this.__xyz(cache.models[0].vertices[face.vertices[0].vertexIndex - 1]),
+                        ...this.__xyz(cache.models[0].vertexNormals[face.vertices[0].vertexNormalIndex - 1]),
+                        ...this.__uv(cache.models[0].textureCoords[face.vertices[0].textureCoordsIndex - 1]),
 
-                    let exit = false;
-                    for (let j = 0; j < cache.models[0].faces.length; j++) {
-                        const face2 = cache.models[0].faces[j];
-                        if(face == face2) {
-                            break;
-                        }
-                        for (let index = 0; index < 3; index++) {
-                            const val = face2.vertices[index];
-                            if(vert.vertexIndex == val.vertexIndex && vert.vertexNormalIndex == val.vertexNormalIndex && vert.textureCoordsIndex == val.textureCoordsIndex){
-                                _indices.push(val.ind)
-                                exit = true
-                                break;
-                            }  
-                        }
-                        
-                        if(exit) break;
-                    }
-                    
-                    if(!exit) {
-                        _indices.push(this.data.length)
-                        vert.ind = this.data.length
-                        this.data.push([
-                            ...this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1]),
-                            ...this.__xyz(cache.models[0].vertexNormals[vert.vertexNormalIndex - 1]),
-                            ...this.__uv(cache.models[0].textureCoords[vert.textureCoordsIndex - 1])
-                        ])
-                    }
-                });
-                this.indices.push(_indices);
+                        ...this.__xyz(cache.models[0].vertices[face.vertices[i-1].vertexIndex - 1]),
+                        ...this.__xyz(cache.models[0].vertexNormals[face.vertices[i-1].vertexNormalIndex - 1]),
+                        ...this.__uv(cache.models[0].textureCoords[face.vertices[i-1].textureCoordsIndex - 1]),
+
+                        ...this.__xyz(cache.models[0].vertices[face.vertices[i].vertexIndex - 1]),
+                        ...this.__xyz(cache.models[0].vertexNormals[face.vertices[i].vertexNormalIndex - 1]),
+                        ...this.__uv(cache.models[0].textureCoords[face.vertices[i].textureCoordsIndex - 1])
+                    ])
+                }
+                face.vertices.forEach(vert => {
+                    const temp = this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1])
+                    this.collision_box[0] = Math.min(this.collision_box[0], temp[0])
+                    this.collision_box[1] = Math.min(this.collision_box[1], temp[1])
+                    this.collision_box[2] = Math.min(this.collision_box[2], temp[2])
+                    this.collision_box[3] = Math.max(this.collision_box[3], temp[0])
+                    this.collision_box[4] = Math.max(this.collision_box[4], temp[1])
+                    this.collision_box[5] = Math.max(this.collision_box[5], temp[2])
+                })
+
+                // face.vertices.forEach(vert => {
+                //     this.data.push([
+                //         ...this.__xyz(cache.models[0].vertices[vert.vertexIndex - 1]),
+                //         ...this.__xyz(cache.models[0].vertexNormals[vert.vertexNormalIndex - 1]),
+                //         ...this.__uv(cache.models[0].textureCoords[vert.textureCoordsIndex - 1])
+                //     ])
+                // });
             });
         })
         .catch(e => console.error(e))
@@ -77,7 +68,7 @@ export class globject {
     FLOATSIZE = 4;
 
     constructor(params) {
-        this.offset = [0, 0, 0]
+        this.offset = params.offset
         this.angle = params.angle
         this.worldMatrix = new Float32Array(16)
         this.needUpdate = false
@@ -85,54 +76,20 @@ export class globject {
         this.images = params.images
         this.shader = params.shader
         this.color = params.color
+        this.len = this.mesh.data.flat().length
+        this.scale = [params.scale, params.scale, params.scale]
+        this.id = params.id
+        this.gravity = params.id == "ground" ? 0 : -0.01
+        this.speed = [0, 0, 0]
+
     }
 
     glinit(gl) {
-        gl.useProgram(this.shader.program);
-        this.shader.vPos = gl.getAttribLocation(this.shader.program, "aVertexPosition");
-        this.shader.vNorm = gl.getAttribLocation(this.shader.program, "aVertexNormal");
-        this.shader.vText = gl.getAttribLocation(this.shader.program, "aVertexTexure");
-
-        this.shader.offset = gl.getUniformLocation(this.shader.program, 'offset');
-        this.shader.curr = gl.getUniformLocation(this.shader.program, 'curr');
-        this.shader.col = gl.getUniformLocation(this.shader.program, 'uColor');
-        
-        this.shader.mProj = gl.getUniformLocation(this.shader.program, 'mProj');
-        this.shader.mView = gl.getUniformLocation(this.shader.program, 'mView');
-        this.shader.mWorld = gl.getUniformLocation(this.shader.program, 'mWorld');
-        this.shader.nMatrix = gl.getUniformLocation(this.shader.program, 'nMatrix');
-
-        this.shader.texture0 = gl.getUniformLocation(this.shader.program, 'texture0');
-        this.shader.texture1 = gl.getUniformLocation(this.shader.program, 'texture1');
-        
         this.VBO = gl.createBuffer()
         gl.bindBuffer(gl.ARRAY_BUFFER, this.VBO);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.mesh.data.flat()), gl.STATIC_DRAW);
         
-        gl.vertexAttribPointer(this.shader.vPos, 3, gl.FLOAT, false, 8 * 4, 0);
-        gl.enableVertexAttribArray(this.shader.vPos);
-
-        gl.vertexAttribPointer(this.shader.vNorm, 3, gl.FLOAT, false, 8 * 4, 3 * 4);
-        gl.enableVertexAttribArray(this.shader.vNorm);
-
-        gl.vertexAttribPointer(this.shader.vText, 2, gl.FLOAT, false, 8 * 4, 6 * 4);
-        gl.enableVertexAttribArray(this.shader.vText);
-        
-        this.IBO = gl.createBuffer()
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.IBO);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.mesh.indices.flat()), gl.STATIC_DRAW);
-        
-        this.shader.viewMatrix = new Float32Array(16);
-        this.shader.projMatrix = new Float32Array(16);
-
-        mat4.lookAt(this.shader.viewMatrix, [0, 0, -8], [0, 0, 0], [0, 1, 0]);
-        mat4.perspective(this.shader.projMatrix, glMatrix.toRadian(45), gl.canvas.width / gl.canvas.height, 0.1, 1000.0);
-
-        gl.uniformMatrix4fv(this.shader.mProj, gl.FALSE, this.shader.projMatrix);
-        gl.uniformMatrix4fv(this.shader.mView, gl.FALSE, this.shader.viewMatrix);
-
         this.texture0 = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture0);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.images[0].width, this.images[0].height, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.images[0]);
@@ -140,54 +97,16 @@ export class globject {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 
         this.texture1 = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, this.texture1);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.images[1].width, this.images[1].height, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.images[1]);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-
-        console.log(this.mesh)
-    }
-
-    setupLights(gl) {
-        gl.useProgram(this.shader.program);
-        this.shader.uLightPosition = gl.getUniformLocation(this.shader.program, 'uLightPosition');
-        this.shader.uAmbientLightColor = gl.getUniformLocation(this.shader.program, 'uAmbientLightColor');
-        this.shader.uDiffuseLightColor = gl.getUniformLocation(this.shader.program, 'uDiffuseLightColor');
-        this.shader.uSpecularLightColor = gl.getUniformLocation(this.shader.program, 'uSpecularLightColor');
-        
-        gl.uniform3fv(this.shader.uLightPosition, [-10.0, 3.0, -10.0]);
-    
-        gl.uniform3fv(this.shader.uAmbientLightColor, [0.1, 0.1, 0.1]);
-        gl.uniform3fv(this.shader.uDiffuseLightColor, [0.7, 0.7, 0.7]);
-        gl.uniform3fv(this.shader.uSpecularLightColor, [1.0, 1.0, 1.0]);
-    
-        this.shader.uAmbientMaterialColor = gl.getUniformLocation(this.shader.program, 'uAmbientMaterialColor')
-        this.shader.uDiffuseMaterialColor = gl.getUniformLocation(this.shader.program, 'uDiffuseMaterialColor')
-        this.shader.uSpecularMaterialColor = gl.getUniformLocation(this.shader.program, 'uSpecularMaterialColor')
-    
-        gl.uniform3fv(this.shader.uAmbientMaterialColor, [1.0, 0.5, 0.31]);
-        gl.uniform3fv(this.shader.uDiffuseMaterialColor, [1.0, 0.5, 0.31]);
-        gl.uniform3fv(this.shader.uSpecularMaterialColor, [0.5, 0.5, 0.5]);
-    
-        this.shader.lambert = gl.getUniformLocation(this.shader.program, 'lambert')
-        gl.uniform1f(this.shader.lambert, 0)
-    
-        this.shader.uAmbientPower = gl.getUniformLocation(this.shader.program, 'uAmbientPower')
-        gl.uniform1f(this.shader.uAmbientPower, 0.5)
-       
-        this.shader.uQuadConst = gl.getUniformLocation(this.shader.program, 'uQuadConst')
-        this.shader.uQuadLin = gl.getUniformLocation(this.shader.program, 'uQuadLin')
-        this.shader.uQuadQuad = gl.getUniformLocation(this.shader.program, 'uQuadQuad')
-    
-        gl.uniform1f(this.shader.uQuadConst, 1)
-        gl.uniform1f(this.shader.uQuadLin, 0.01)
-        gl.uniform1f(this.shader.uQuadQuad, 0.0001)
     }
 
     draw(gl) {
         gl.useProgram(this.shader.program)
+
         var t = (Math.sin(performance.now() / 200) * 0.5 + 0.5) * 0.2
         
         gl.uniform3fv(this.shader.offset, this.offset)
@@ -197,11 +116,13 @@ export class globject {
         gl.uniform1i(this.shader.texture1, 1);
 
         mat4.identity(this.worldMatrix)
-        mat4.rotate(this.worldMatrix, this.worldMatrix, 0.5 + t, [0, 1, 0]) // крутим себя относительно центра мира
+        // mat4.rotate(this.worldMatrix, this.worldMatrix, 0.5 + t, [0, 1, 0]) // крутим себя относительно центра мира
         mat4.translate(this.worldMatrix, this.worldMatrix, this.offset) // доходим до своей точки
         mat4.rotateX(this.worldMatrix, this.worldMatrix, this.angle[0])
         mat4.rotateY(this.worldMatrix, this.worldMatrix, this.angle[1])
         mat4.rotateZ(this.worldMatrix, this.worldMatrix, this.angle[2])
+        mat4.scale(this.worldMatrix, this.worldMatrix, this.scale)
+        // mat4.fromRotationTranslationScaleOrigin(this.worldMatrix, this.angle, this.offset, this.scale, [0, 0, 0])
             
         var normMatrix = new Float32Array(9);
         mat3.normalFromMat4(normMatrix, this.worldMatrix);
@@ -209,9 +130,63 @@ export class globject {
         gl.uniformMatrix4fv(this.shader.mWorld, gl.FALSE, this.worldMatrix)
         gl.uniformMatrix3fv(this.shader.nMatrix, gl.FALSE, normMatrix)
 
+        gl.uniform3fv(this.shader.uAmbientMaterialColor, [1.0, 0.5, 0.31]);
+        gl.uniform3fv(this.shader.uDiffuseMaterialColor, [1.0, 0.5, 0.31]);
+        gl.uniform3fv(this.shader.uSpecularMaterialColor, [0.5, 0.5, 0.5]);
+
+        // >>----- VAO
         gl.bindBuffer(gl.ARRAY_BUFFER, this.VBO);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.IBO);
+
+        gl.vertexAttribPointer(this.shader.vPos, 3, gl.FLOAT, false, 8 * 4, 0);
+        gl.vertexAttribPointer(this.shader.vNorm, 3, gl.FLOAT, false, 8 * 4, 3 * 4);
+        gl.vertexAttribPointer(this.shader.vText, 2, gl.FLOAT, false, 8 * 4, 6 * 4);
+
+        gl.enableVertexAttribArray(this.shader.vPos);
+        gl.enableVertexAttribArray(this.shader.vNorm);
+        gl.enableVertexAttribArray(this.shader.vText);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture1);
+        // <<----- VAO
+
         //gl.drawElements(gl.TRIANGLES, this.mesh.indices.flat().length, gl.UNSIGNED_SHORT, 0)
-        gl.drawArrays(gl.TRIANGLES, 0, this.mesh.data.length);
+        gl.drawArrays(gl.TRIANGLES, 0, this.len);
+    }
+
+    static to_xyz(a){
+        return {
+            x: a[0],
+            y: a[1],
+            z: a[2]
+        }
+    }
+
+    collision(obj) {
+        let t1 = [this.mesh.collision_box[0], this.mesh.collision_box[1], this.mesh.collision_box[2]]
+        let t2 = [this.mesh.collision_box[3], this.mesh.collision_box[4], this.mesh.collision_box[5]]
+        // for(let i = 0; i < 3; i++) cb1[i + 3] = cb1[i + 3] - cb1[i]
+
+        let t3 = [obj.mesh.collision_box[0], obj.mesh.collision_box[1], obj.mesh.collision_box[2]]
+        let t4 = [obj.mesh.collision_box[3], obj.mesh.collision_box[4], obj.mesh.collision_box[5]]
+        // for(let i = 0; i < 3; i++) cb2[i + 3] = cb2[i + 3] - cb2[i]
+
+        // console.log(this.id + " " + a)
+        // console.log(obj.id + " " + b)
+
+        var l1 = globject.to_xyz(vec3.transformMat4(t1, t1, this.worldMatrix)),
+            u1 = globject.to_xyz(vec3.transformMat4(t2, t2, this.worldMatrix)),
+            l2 = globject.to_xyz(vec3.transformMat4(t3, t3, obj.worldMatrix)),
+            u2 = globject.to_xyz(vec3.transformMat4(t4, t4, obj.worldMatrix))
+     
+        //      l2        u2
+        //      |---------|
+        // |--------|
+        // l1       u1
+     
+        return ((l2.x <= u1.x && u1.x <= u2.x) || (l1.x <= u2.x && u2.x <= u1.x)) &&
+               ((l2.y <= u1.y && u1.y <= u2.y) || (l1.y <= u2.y && u2.y <= u1.y)) &&
+               ((l2.z <= u1.z && u1.z <= u2.z) || (l1.z <= u2.z && u2.z <= u1.z));
     }
 }
