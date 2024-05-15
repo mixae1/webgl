@@ -1,113 +1,7 @@
 import { glmesh, globject } from "./object";
 
-const vsPhong = 
-`# version 300 es
-
-uniform mat4 mProj;
-uniform mat4 mView;
-uniform mat4 mWorld;
-uniform mat3 nMatrix;
-
-uniform vec3 offset;
-uniform vec3 uLightPosition;
-
-in vec3 aVertexPosition;
-in vec3 aVertexNormal;
-in vec2 aVertexTexure;
-
-out vec3 lightDirection;
-out vec3 normal;
-out vec3 vertexPositionEye3;
-out vec2 textureCord;
-
-out float lightDist;
-
-out vec4 vpos;
-
-void main(void) {
-    mat4 uMVMatrix = mView * mWorld;
-
-    vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
-    vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
-
-    lightDist = length(uLightPosition - vertexPositionEye3);
-    lightDirection = normalize(uLightPosition - vertexPositionEye3);
-    normal = normalize(nMatrix * normalize(aVertexNormal));
-
-    vpos = mProj * uMVMatrix * vec4(aVertexPosition, 1.0);
-    gl_Position = vpos;
-    textureCord = aVertexTexure;
-}
-`;
-
-const fsPhong = 
-`# version 300 es
-precision highp float;
-
-in vec3 lightDirection;
-in vec3 normal;
-in vec3 vertexPositionEye3;
-
-uniform vec3 uAmbientLightColor;
-uniform vec3 uDiffuseLightColor;
-uniform vec3 uSpecularLightColor;
-uniform float uAmbientPower;
-
-float shininess = 16.0;
-
-uniform vec3 uAmbientMaterialColor;
-uniform vec3 uDiffuseMaterialColor;
-uniform vec3 uSpecularMaterialColor;
-
-uniform vec3 uColor;
-uniform float curr;
-out vec4 fragColor;
-
-in float lightDist;
-
-uniform float lambert;
-
-uniform float uQuadConst;
-uniform float uQuadLin;
-uniform float uQuadQuad;
-
-uniform sampler2D texture0;
-uniform sampler2D texture1;
-in vec2 textureCord;
-
-uniform float textMix;
-
-in vec4 vpos;
-
-float normal_add() {
-    float currH = texture(texture1, textureCord).x;
-    float xH = texture(texture1, textureCord + dFdx(textureCord)).x - currH;
-    float yH = texture(texture1, textureCord + dFdy(textureCord)).x - currH;
-    return textureCord.x * xH + textureCord.y * yH;
-}
-
-void main(void) {
-    vec3 newnormal = normal + normal_add();
-    float diffuseLightDot = max(dot(newnormal, lightDirection), 0.0);
-
-    vec3 reflectionVector = normalize(reflect(-lightDirection, newnormal));
-    vec3 viewVectorEye = normalize(vertexPositionEye3);
-    float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
-    float specularLightParam = pow(specularLightDot, shininess);
-
-    vec3 vLightWeighting = uDiffuseMaterialColor * uDiffuseLightColor * diffuseLightDot;
-    if(lambert == 0.0){
-        vLightWeighting += uAmbientMaterialColor * uAmbientLightColor * uAmbientPower +
-            uSpecularMaterialColor * uSpecularLightColor * specularLightParam;
-    }
-
-    float F = 1.0 / (uQuadConst + uQuadLin * lightDist + uQuadQuad * lightDist * lightDist);
-
-    vec4 vColor = vec4(uColor + curr, 1.0);
-    vec4 text0 = texture(texture0, textureCord);
-    fragColor = vec4(vLightWeighting.rgb * F * text0.xyz, vColor.a);
-}
-`;
+const vsPhong = await (await fetch("vsPhong.glsl")).text();
+const fsPhong = await (await fetch("fsPhong.glsl")).text();
 
 // document.addEventListener('keydown', onKeyDown, false);
 
@@ -190,8 +84,6 @@ images[8].src = './grass/Trava Kolosok Cut.jpg'
 
 images[9].src = './model.jpg'
 
-images[9].onload = await new Promise(r => setTimeout(r, 500));
-
 await new Promise(r => setTimeout(r, 1000));
 
 const objects = []
@@ -201,6 +93,22 @@ const PI2 = 2 * PI
 var main = function(){ 
     const Phong = initShaderProgram(gl, vsPhong, fsPhong)
     let params = {}, temp = null
+
+    if(true){
+        params = {
+            shader: Phong,
+            mesh: cube,
+            images: [images[9], images[9]],
+            id: "ground",
+            color: [0, 0, 0],
+            angle: [0, 0, 0, 1],
+            offset: [0, -10, 0],
+            scale: 10
+        }
+        temp = new globject(params)
+        temp.glinit(gl)
+        objects.push(temp)
+    }
 
     // house
     if(true){
@@ -287,21 +195,6 @@ var main = function(){
         objects.push(temp)
     }
 
-    if(true){
-        params = {
-            shader: Phong,
-            mesh: cube,
-            images: [images[9], images[9]],
-            id: "ground",
-            color: [0, 0, 0],
-            angle: [0, 0, 0, 1],
-            offset: [0, -10, 0],
-            scale: 10
-        }
-        temp = new globject(params)
-        temp.glinit(gl)
-        objects.push(temp)
-    }
 
     drawScene();
 }
@@ -325,10 +218,6 @@ function initShaderProgram(gl, vsSource, fsSource) {
     shaderProgram.vPos = gl.getAttribLocation(shaderProgram.program, "aVertexPosition");
     shaderProgram.vNorm = gl.getAttribLocation(shaderProgram.program, "aVertexNormal");
     shaderProgram.vText = gl.getAttribLocation(shaderProgram.program, "aVertexTexure");
-
-    shaderProgram.offset = gl.getUniformLocation(shaderProgram.program, 'offset');
-    shaderProgram.curr = gl.getUniformLocation(shaderProgram.program, 'curr');
-    shaderProgram.col = gl.getUniformLocation(shaderProgram.program, 'uColor');
     
     shaderProgram.mProj = gl.getUniformLocation(shaderProgram.program, 'mProj');
     shaderProgram.mView = gl.getUniformLocation(shaderProgram.program, 'mView');
@@ -361,9 +250,6 @@ function initShaderProgram(gl, vsSource, fsSource) {
     shaderProgram.uAmbientMaterialColor = gl.getUniformLocation(shaderProgram.program, 'uAmbientMaterialColor')
     shaderProgram.uDiffuseMaterialColor = gl.getUniformLocation(shaderProgram.program, 'uDiffuseMaterialColor')
     shaderProgram.uSpecularMaterialColor = gl.getUniformLocation(shaderProgram.program, 'uSpecularMaterialColor')
-
-    shaderProgram.lambert = gl.getUniformLocation(shaderProgram.program, 'lambert')
-    gl.uniform1f(shaderProgram.lambert, 0)
 
     shaderProgram.uAmbientPower = gl.getUniformLocation(shaderProgram.program, 'uAmbientPower')
     gl.uniform1f(shaderProgram.uAmbientPower, 0.5)
@@ -414,6 +300,35 @@ function drawScene() {
             character.angle[2] -= 0.01
         }
 
+        switch(catState[0]) {
+            case 0:
+                // forward
+                if(catState[1] == 0) {
+                    catState[0] = 1;
+                    catState[1] = 100;
+                }
+                else {
+                    catState[1]--;
+                    catty.speed[0] = Math.sin(catty.angle[2]) / 100
+                    catty.speed[2] = Math.cos(catty.angle[2]) / 100
+                } 
+                
+                break;
+            case 1:
+                // rotate
+                if(catState[1] == 0) {
+                    catState[0] = 0;
+                    catState[1] = 400;
+                }
+                else {
+                    catty.angle[2] += PI / 100
+                    catState[1]--;
+                    catty.speed[0] = 0
+                    catty.speed[2] = 0
+                }
+                break;
+        }
+
         objects.forEach(obj => {
             obj.offset[1] += obj.gravity
             for(let i = 0; i < 3; i++) obj.offset[i] += obj.speed[i]
@@ -427,10 +342,8 @@ function drawScene() {
                         objects[j].offset[1] -= objects[j].gravity
                     }
                     else{
-                        console.log("collision!")
                         for(let k = 0; k < 3; k++){
-                            objects[i].offset[k] -= objects[i].speed[k]
-                            objects[j].offset[k] -= objects[j].speed[k]
+                            character.offset[k] -= character.speed[k] * 2
                         }
                     }
                 }
@@ -452,7 +365,10 @@ document.addEventListener('keydown', onKeyDown, false);
 document.addEventListener('keyup', onKeyUp, false);
 
 const character = objects.filter(obj => obj.id == "bird")[0]
+const catty = objects.filter(obj => obj.id == "cat")[0]
+
 const bools = [false, false, false, false]
+let catState = [0, 200]
 
 function onKeyDown(event)
 {
